@@ -16,7 +16,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=8">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=8">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png?v=8">
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body class="theme-preto">
 
@@ -460,16 +460,19 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- SCRIPTS -->
-  <script src="js/db.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/db.js?v=12"></script>
+  <script src="js/auth.js?v=12"></script>
+  <script src="js/app.js?v=12"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-          .then((reg) => console.log('Service Worker registrado:', reg.scope))
+        navigator.serviceWorker.register('sw.js?v=12')
+          .then((reg) => {
+            reg.update();
+            console.log('Service Worker registrado:', reg.scope);
+          })
           .catch((err) => console.warn('SW aviso:', err));
       });
     }

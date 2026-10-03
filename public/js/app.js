@@ -136,16 +136,39 @@ function setupOnlineStatus() {
 // INICIALIZAÇÃO DO CHECKLIST ATIVO
 // ==========================================
 async function initActiveChecklist() {
-  // Tenta carregar o último checklist pendente ou cria um novo
-  const all = await window.TruckDB.getAllChecklists();
-  const lastPending = all.find(c => c.status === 'pendente');
+  const currentUser = window.TruckAuth ? window.TruckAuth.getAuthUser() : null;
+  const currentUserId = currentUser ? currentUser.id : null;
+  const all = await window.TruckDB.getAllChecklists(currentUserId);
 
-  if (lastPending) {
-    activeChecklist = lastPending;
+  const savedId = localStorage.getItem('truck_active_checklist_id');
+  let current = null;
+
+  if (savedId) {
+    current = all.find(c => c.id === savedId);
+    if (!current) {
+      current = await window.TruckDB.getChecklist(savedId);
+    }
+  }
+
+  // Se não encontrou pelo ID salvo, busca a última vistoria pendente
+  if (!current) {
+    current = all.find(c => c.status === 'pendente');
+  }
+
+  // Se não houver pendente, abre a última vistoria salva para preservar dados e mídias
+  if (!current && all.length > 0) {
+    current = all[0];
+  }
+
+  if (current) {
+    activeChecklist = current;
   } else {
     activeChecklist = createEmptyChecklist();
     await window.TruckDB.saveChecklist(activeChecklist);
   }
+
+  localStorage.setItem('truck_active_checklist_id', activeChecklist.id);
+  window.activeChecklist = activeChecklist;
 
   populateFormFromActiveChecklist();
   await renderChecklistItems();
@@ -364,6 +387,8 @@ async function renderChecklistItems() {
 
     // Filtra as mídias específicas desta caixinha
     const itemMedias = allMedias.filter(m => m.itemId === item.id);
+    const itemSelectedCount = itemMedias.filter(m => m.includeInShare !== false).length;
+    const itemAllSelected = itemMedias.length > 0 && itemSelectedCount === itemMedias.length;
 
     card.innerHTML = `
       <!-- Cabeçalho Linear e Alinhado com Ícone Representativo -->
@@ -405,11 +430,17 @@ async function renderChecklistItems() {
 
       <!-- ÁREA DE MÍDIAS DENTRO DESTA CAIXINHA -->
       <div class="item-media-section">
-        <div class="item-media-header">
+        <div class="item-media-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
           <span class="item-media-title">
             <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
             <span>Fotos e Vídeos deste Item (${itemMedias.length})</span>
           </span>
+          ${itemMedias.length > 0 ? `
+            <label class="custom-checkbox-label box-share-checkbox" style="width: auto; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);">
+              <input type="checkbox" ${itemAllSelected ? 'checked' : ''} onchange="toggleBoxMediasShare('${item.id}', this.checked)">
+              <span>Selecionar mídias deste item (${itemSelectedCount}/${itemMedias.length})</span>
+            </label>
+          ` : ''}
         </div>
 
         <div class="item-media-buttons">
@@ -458,7 +489,7 @@ function renderItemMediasHtml(medias) {
         <!-- Checkbox de Seleção para Envio -->
         <div class="media-share-toggle">
           <label class="custom-checkbox-label">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleMediaShare('${m.id}', this.checked)">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleMediaShare('${m.id}', '${m.itemId}', this.checked)">
             <span>Compartilhar foto/vídeo no WhatsApp</span>
           </label>
         </div>
@@ -554,21 +585,6 @@ function triggerMediaCapture(itemId, mediaType, isCamera) {
   }
 }
 
-function downloadFileLocally(fileOrBlob, filename) {
-  try {
-    const url = URL.createObjectURL(fileOrBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-  } catch (err) {
-    console.warn('Erro ao salvar localmente no celular:', err);
-  }
-}
-
 async function handleIncomingFiles(fileList, mediaType) {
   if (!fileList || fileList.length === 0 || !activeTargetItemId) return;
 
@@ -581,7 +597,7 @@ async function handleIncomingFiles(fileList, mediaType) {
     const ext = originalFile.name.split('.').pop() || (mediaType === 'photo' ? 'jpg' : 'mp4');
     const filename = `VISTORIA_${plate}_${activeTargetItemId}_${timestamp}_${i + 1}.${ext}`;
 
-    // Salvamento AUTOMÁTICO e transparente no banco de dados local do celular (sem popups de download)
+    // Salvamento AUTOMÁTICO e silencioso no banco de dados local do celular (IndexedDB - sem popups do navegador)
     const mediaItem = {
       id: `media_${timestamp}_${Math.random().toString(36).substring(2, 6)}`,
       checklistId: activeChecklist.id,
@@ -600,25 +616,67 @@ async function handleIncomingFiles(fileList, mediaType) {
     countAdded++;
   }
 
-  // Re-renderiza as mídias daquela caixinha específica
-  const itemMedias = await window.TruckDB.getMediaByChecklistAndItem(activeChecklist.id, activeTargetItemId);
-  const mediaListContainer = document.getElementById(`mediaList_${activeTargetItemId}`);
-  if (mediaListContainer) {
-    mediaListContainer.innerHTML = renderItemMediasHtml(itemMedias);
-  }
+  // Salva o checklist ativo com os dados atuais
+  collectFormIntoActiveChecklist();
+  await window.TruckDB.saveChecklist(activeChecklist);
+
+  // Re-renderiza para atualizar mídias, contadores e caixas
+  await renderChecklistItems();
 
   updateBadges();
   await updateMediaShareCount();
-  showToast(`${countAdded} mídia(s) salva(s) no aparelho!`, 'success');
+  showToast(`${countAdded} mídia(s) salva(s) automaticamente!`, 'success');
 }
 
 async function updateMediaNotes(mediaId, notes) {
   await window.TruckDB.updateMediaRecord(mediaId, { notes });
 }
 
-async function toggleMediaShare(mediaId, isChecked) {
+async function toggleMediaShare(mediaId, itemId, isChecked) {
   await window.TruckDB.updateMediaRecord(mediaId, { includeInShare: isChecked });
+
+  // Sincroniza o checkbox do cabeçalho da caixinha correspondente
+  if (itemId && activeChecklist) {
+    const itemMedias = await window.TruckDB.getMediaByChecklistAndItem(activeChecklist.id, itemId);
+    const boxCard = document.getElementById(`checkItem_${itemId}`);
+    if (boxCard) {
+      const boxCheckbox = boxCard.querySelector('.box-share-checkbox input[type="checkbox"]');
+      const boxText = boxCard.querySelector('.box-share-checkbox span');
+      const selCount = itemMedias.filter(m => m.includeInShare !== false).length;
+      if (boxCheckbox) boxCheckbox.checked = (itemMedias.length > 0 && selCount === itemMedias.length);
+      if (boxText) boxText.textContent = `Selecionar mídias deste item (${selCount}/${itemMedias.length})`;
+    }
+  }
+
   await updateMediaShareCount();
+}
+
+async function toggleBoxMediasShare(itemId, isChecked) {
+  if (!activeChecklist) return;
+  const itemMedias = await window.TruckDB.getMediaByChecklistAndItem(activeChecklist.id, itemId);
+  for (const m of itemMedias) {
+    await window.TruckDB.updateMediaRecord(m.id, { includeInShare: isChecked });
+  }
+
+  const mediaListContainer = document.getElementById(`mediaList_${itemId}`);
+  if (mediaListContainer) {
+    const updatedMedias = await window.TruckDB.getMediaByChecklistAndItem(activeChecklist.id, itemId);
+    mediaListContainer.innerHTML = renderItemMediasHtml(updatedMedias);
+  }
+
+  const boxCard = document.getElementById(`checkItem_${itemId}`);
+  if (boxCard) {
+    const boxCheckbox = boxCard.querySelector('.box-share-checkbox input[type="checkbox"]');
+    const boxText = boxCard.querySelector('.box-share-checkbox span');
+    if (boxCheckbox) boxCheckbox.checked = isChecked;
+    if (boxText) {
+      const count = isChecked ? itemMedias.length : 0;
+      boxText.textContent = `Selecionar mídias deste item (${count}/${itemMedias.length})`;
+    }
+  }
+
+  await updateMediaShareCount();
+  showToast(isChecked ? 'Mídias deste item marcadas para envio.' : 'Mídias deste item desmarcadas do envio.', 'info');
 }
 
 async function toggleSelectAllMedias() {
@@ -640,7 +698,6 @@ async function toggleSelectAllMedias() {
   // Atualiza as caixinhas e o contador
   await renderChecklistItems();
   await updateMediaShareCount();
-  showToast(targetState ? 'Todas as mídias selecionadas para envio!' : 'Todas as mídias desmarcadas do envio.', 'success');
 }
 
 async function updateMediaShareCount() {
@@ -717,12 +774,7 @@ async function concludeCurrentChecklist() {
 
   await refreshHistoryList();
   showToast('Vistoria Concluída com Sucesso!', 'success');
-
-  if (confirm('Vistoria concluída! Deseja compartilhar o relatório agora no WhatsApp?')) {
-    shareReportViaWhatsApp(activeChecklist.id);
-  } else {
-    switchTab(3); // Vai para a aba de Vistorias
-  }
+  switchTab(3); // Vai diretamente para a aba de Vistorias Salvas
 }
 
 // ==========================================
@@ -840,6 +892,8 @@ async function loadChecklistForEdit(checklistId) {
   }
 
   activeChecklist = item;
+  window.activeChecklist = activeChecklist;
+  localStorage.setItem('truck_active_checklist_id', item.id);
   populateFormFromActiveChecklist();
   await renderChecklistItems();
   switchTab(2); // Leva para a aba de Vistoria
@@ -859,7 +913,9 @@ async function deleteHistoryChecklist(checklistId) {
   if (confirm('Tem certeza de que deseja excluir permanentemente esta vistoria e todas as suas fotos/vídeos?')) {
     await window.TruckDB.deleteChecklist(checklistId);
     if (activeChecklist && activeChecklist.id === checklistId) {
+      localStorage.removeItem('truck_active_checklist_id');
       activeChecklist = createEmptyChecklist();
+      window.activeChecklist = activeChecklist;
       populateFormFromActiveChecklist();
       await renderChecklistItems();
     }
@@ -1054,6 +1110,8 @@ function setupEventListeners() {
 
       activeChecklist = createEmptyChecklist();
       await window.TruckDB.saveChecklist(activeChecklist);
+      localStorage.setItem('truck_active_checklist_id', activeChecklist.id);
+      window.activeChecklist = activeChecklist;
 
       populateFormFromActiveChecklist();
       await renderChecklistItems();
@@ -1150,3 +1208,7 @@ window.addEventListener('offline', () => {
 window.addEventListener('online', () => {
   showToast('Conexão com a internet restabelecida!', 'success');
 });
+
+// Funções expostas globalmente para o módulo de autenticação e histórico
+window.initActiveChecklist = initActiveChecklist;
+window.refreshHistoryList = refreshHistoryList;

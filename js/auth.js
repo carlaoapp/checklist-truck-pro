@@ -49,6 +49,7 @@ function logout() {
   if (confirm('Deseja realmente sair da sua conta de motorista?')) {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
+    localStorage.removeItem('truck_active_checklist_id');
     sessionStorage.removeItem(AUTH_TOKEN_KEY);
     sessionStorage.removeItem(AUTH_USER_KEY);
     window.location.reload();
@@ -254,15 +255,11 @@ async function handleAuthSubmit() {
       document.getElementById('authContainer').style.display = 'none';
 
       // Atualiza o checklist ativo com o novo motorista
-      if (window.activeChecklist) {
-        window.activeChecklist.userId = newUser.id;
-        window.activeChecklist.driverName = newUser.name;
-        const driverInput = document.getElementById('driverName');
-        if (driverInput) driverInput.value = newUser.name;
+      if (typeof window.initActiveChecklist === 'function') {
+        await window.initActiveChecklist();
       }
-
-      if (typeof refreshHistoryList === 'function') {
-        await refreshHistoryList();
+      if (typeof window.refreshHistoryList === 'function') {
+        await window.refreshHistoryList();
       }
 
       showToast(`Conta criada com sucesso! Bem-vindo, ${newUser.name}!`, 'success');
@@ -281,20 +278,12 @@ async function handleAuthSubmit() {
       updateUserInterface(user);
       document.getElementById('authContainer').style.display = 'none';
 
-      // Associa checklist ao usuário e atualiza histórico do usuário logado
-      if (window.activeChecklist) {
-        window.activeChecklist.userId = user.id;
-        if (!window.activeChecklist.driverName) {
-          window.activeChecklist.driverName = user.name;
-        }
-        const driverInput = document.getElementById('driverName');
-        if (driverInput && !driverInput.value.trim()) {
-          driverInput.value = user.name;
-        }
+      // Carrega imediatamente os dados do motorista autenticado
+      if (typeof window.initActiveChecklist === 'function') {
+        await window.initActiveChecklist();
       }
-
-      if (typeof refreshHistoryList === 'function') {
-        await refreshHistoryList();
+      if (typeof window.refreshHistoryList === 'function') {
+        await window.refreshHistoryList();
       }
 
       showToast(`Login realizado com sucesso! Bem-vindo, ${user.name}!`, 'success');
