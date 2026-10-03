@@ -207,22 +207,32 @@ body.theme-claro .app-header {
   background-color: rgba(255, 255, 255, 0.96);
 }
 
-/* Linha 1: Nome do App SOZINHO na linha */
-.brand {
+/* Linha 1: Marca + Status e Versão */
+.brand-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   width: 100%;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
 .brand-icon {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
   flex-shrink: 0;
 }
 
 .brand-title {
-  font-size: 1.15rem;
+  font-size: 1.10rem;
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--text-main);
@@ -232,14 +242,21 @@ body.theme-claro .app-header {
 }
 
 .brand-subtitle {
-  font-size: 0.70rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: #38bdf8;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-/* Linha 2: Botões organizados abaixo */
+.header-status-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Linha 2: Botões organizados e alinhados */
 .header-actions {
   display: flex;
   align-items: center;
@@ -247,33 +264,112 @@ body.theme-claro .app-header {
   width: 100%;
 }
 
-.btn-header-action {
+/* Card do Usuário (E-mail + Sair) com altura padronizada e sem quebra */
+.user-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  min-height: 40px;
+  max-height: 40px;
+  flex: 1.3;
+  min-width: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.user-pill-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
   flex: 1;
+}
+
+.user-icon {
+  width: 14px;
+  height: 14px;
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.user-email-text {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+}
+
+.btn-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-logout:hover, .btn-logout:active {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ffffff;
+  transform: scale(0.96);
+}
+
+.btn-header-action {
+  flex: 0.9;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-main);
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  font-size: 0.88rem;
+  padding: 6px 10px;
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 42px;
-  transition: all 0.2s;
+  gap: 5px;
+  min-height: 40px;
+  max-height: 40px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .btn-header-action:hover, .btn-header-action:active {
   background: var(--surface-hover);
-  border-color: var(--primary);
+  border-color: var(--border-focus);
+}
+
+.btn-header-new {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+  font-weight: 800;
+}
+
+.btn-header-new:hover, .btn-header-new:active {
+  background: var(--primary);
+  color: #ffffff;
 }
 
 .offline-pill {
-  font-size: 0.72rem;
-  padding: 6px 10px;
+  font-size: 0.70rem;
+  padding: 4px 8px;
   border-radius: var(--radius-pill);
   background: rgba(34, 197, 94, 0.15);
   color: #4ade80;
@@ -283,13 +379,76 @@ body.theme-claro .app-header {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 42px;
+  min-height: 28px;
 }
 
 .offline-pill.is-offline {
   background: rgba(234, 179, 8, 0.2);
   color: #fde047;
   border-color: #ca8a04;
+}
+
+.version-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary, #cbd5e1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-pill);
+  padding: 4px 8px;
+  font-size: 0.70rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 28px;
+  transition: all 0.15s ease;
+}
+
+.version-pill:active {
+  transform: scale(0.95);
+  background: rgba(37, 99, 235, 0.25);
+}
+
+@media (max-width: 440px) {
+  .app-header {
+    padding: 8px 10px 8px 10px;
+    gap: 8px;
+  }
+  .brand-title {
+    font-size: 0.98rem;
+  }
+  .brand-subtitle {
+    font-size: 0.62rem;
+  }
+  .header-actions {
+    gap: 5px;
+  }
+  .user-pill {
+    padding: 3px 6px;
+    gap: 4px;
+    min-height: 38px;
+    max-height: 38px;
+  }
+  .user-email-text {
+    font-size: 0.70rem;
+    max-width: 85px;
+  }
+  .btn-logout {
+    padding: 3px 5px;
+    font-size: 0.68rem;
+  }
+  .btn-header-action {
+    padding: 5px 6px;
+    font-size: 0.76rem;
+    gap: 3px;
+    min-height: 38px;
+    max-height: 38px;
+  }
+  .btn-header-action .ui-icon {
+    width: 14px;
+    height: 14px;
+  }
 }
 
 /* ======================================================================
@@ -1580,57 +1739,6 @@ label {
   color: #93c5fd;
 }
 
-/* Badge do Usuário Logado no Topo */
-.user-pill {
-  background: rgba(37, 99, 235, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  color: #93c5fd;
-  border-radius: var(--radius-pill);
-  padding: 4px 10px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-logout {
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 0.72rem;
-  font-weight: 800;
-  cursor: pointer;
-  margin-left: 4px;
-  transition: all 0.15s ease;
-}
-
-.btn-logout:hover {
-  background: rgba(239, 68, 68, 0.35);
-  color: #ffffff;
-}
-
-/* ======================================================================
-   VERSÃO DO APP + AVISO DE ATUALIZAÇÃO
-   ====================================================================== */
-.version-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-secondary, #cbd5e1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-.version-pill:active { transform: scale(0.95); background: rgba(37, 99, 235, 0.25); }
 
 .splash-version, .auth-version {
   margin-top: 10px;

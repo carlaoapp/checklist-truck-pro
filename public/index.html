@@ -16,7 +16,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=8">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=8">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png?v=8">
-  <link rel="stylesheet" href="css/style.css?v=1.5.0">
+  <link rel="stylesheet" href="css/style.css?v=1.5.1">
 </head>
 <body class="theme-preto">
 
@@ -98,7 +98,7 @@
         <a href="#" id="authToggleModeLink" class="auth-link" onclick="event.preventDefault(); TruckAuth.setAuthMode(currentAuthMode === 'login' ? 'register' : 'login')">
           Não possui conta? Cadastre-se agora.
         </a>
-        <div class="auth-version">Versão <span class="app-version-tag">1.5.0</span></div>
+        <div class="auth-version">Versão <span class="app-version-tag">1.5.1</span></div>
       </div>
     </div>
   </div>
@@ -120,45 +120,58 @@
       <button type="button" id="btnEnterApp" class="btn-splash-enter" onclick="dismissSplash()">
         Acessar Checklist
       </button>
-      <p class="splash-version">Versão <span class="app-version-tag">1.5.0</span></p>
+      <p class="splash-version">Versão <span class="app-version-tag">1.5.1</span></p>
     </div>
   </div>
 
   <!-- TOPO FIXO UNIFICADO (CABEÇALHO + NAVEGAÇÃO DE ABAS) -->
   <div class="top-bar-sticky">
     <header class="app-header">
-      <!-- Linha 1: Nome do App SOZINHO na linha com foto do caminhão -->
-      <div class="brand">
-        <img src="icons/icon-192.png" alt="Ícone Truck Pro" class="brand-icon">
-        <div class="brand-title">
-          CHECKLIST TRUCK PRO
-          <span class="brand-subtitle">Bitrem &amp; Frotas Rodoviárias</span>
+      <!-- Linha 1: Marca + Status de Conexão + Versão do App -->
+      <div class="brand-row">
+        <div class="brand">
+          <img src="icons/icon-192.png" alt="Ícone Truck Pro" class="brand-icon">
+          <div class="brand-title">
+            CHECKLIST TRUCK PRO
+            <span class="brand-subtitle">Bitrem &amp; Frotas Rodoviárias</span>
+          </div>
+        </div>
+        <div class="header-status-group">
+          <div id="connectionStatus" class="offline-pill">● Conectado</div>
+          <button type="button" id="btnCheckUpdate" class="version-pill" title="Toque para verificar atualização" onclick="checkForUpdates(true)">
+            <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            <span class="app-version-tag">v1.5.1</span>
+          </button>
         </div>
       </div>
-      <!-- Linha 2: Botões organizados abaixo da linha do nome -->
+
+      <!-- Linha 2: Usuário Logado (com E-mail e Botão Sair) + Botões de Ação Padronizados -->
       <div class="header-actions">
-        <!-- Usuário Ativo / Botão Sair -->
+        <!-- Usuário Ativo com E-mail e Botão Sair integrado -->
         <div id="currentUserDisplay" class="user-pill" style="display: none;">
-          <svg class="ui-icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span id="currentUserName">Motorista</span>
-          <button type="button" class="btn-logout" title="Sair da conta" onclick="TruckAuth.logout()">Sair</button>
+          <div class="user-pill-info" title="E-mail do motorista logado">
+            <svg class="ui-icon user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span id="currentUserEmail" class="user-email-text">motorista@truckpro.com</span>
+          </div>
+          <button type="button" class="btn-logout" title="Sair da conta de motorista" onclick="TruckAuth.logout()">
+            <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span>Sair</span>
+          </button>
         </div>
+
         <button id="btnOpenThemes" class="btn-header-action" title="Mudar cor do app">
           <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
           <span>Cores</span>
         </button>
+
         <button id="btnInstallApp" class="btn-header-action" style="display: none;" title="Baixar e instalar aplicativo no aparelho" onclick="triggerAppInstall()">
           <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           <span>Instalar</span>
         </button>
-        <button id="btnNewChecklist" class="btn-header-action" title="Iniciar nova vistoria">
-          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+
+        <button id="btnNewChecklist" class="btn-header-action btn-header-new" title="Iniciar nova vistoria">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>Nova Vistoria</span>
-        </button>
-        <div id="connectionStatus" class="offline-pill">● Conectado</div>
-        <button type="button" id="btnCheckUpdate" class="version-pill" title="Toque para verificar atualização" onclick="checkForUpdates(true)">
-          <svg class="ui-icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          <span class="app-version-tag">v1.5.0</span>
         </button>
       </div>
     </header>
@@ -470,16 +483,16 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- SCRIPTS -->
-  <script src="js/db.js?v=1.5.0"></script>
-  <script src="js/auth.js?v=1.5.0"></script>
-  <script src="js/app.js?v=1.5.0"></script>
-  <script src="js/update.js?v=1.5.0"></script>
+  <script src="js/db.js?v=1.5.1"></script>
+  <script src="js/auth.js?v=1.5.1"></script>
+  <script src="js/app.js?v=1.5.1"></script>
+  <script src="js/update.js?v=1.5.1"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js?v=1.5.0')
+        navigator.serviceWorker.register('sw.js?v=1.5.1')
           .then((reg) => {
             reg.update();
             console.log('Service Worker registrado:', reg.scope);

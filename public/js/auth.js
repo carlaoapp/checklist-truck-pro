@@ -107,11 +107,13 @@ async function seedDefaultAccountIfEmpty() {
 
 function updateUserInterface(user) {
   const userDisplay = document.getElementById('currentUserDisplay');
-  const userNameEl = document.getElementById('currentUserName');
+  const userEmailEl = document.getElementById('currentUserEmail') || document.getElementById('currentUserName');
   const driverInput = document.getElementById('driverName');
 
-  if (userDisplay && userNameEl) {
-    userNameEl.textContent = user.name || user.email;
+  if (userDisplay && userEmailEl) {
+    const emailToDisplay = user.email || user.name || 'motorista';
+    userEmailEl.textContent = emailToDisplay;
+    userEmailEl.title = emailToDisplay;
     userDisplay.style.display = 'inline-flex';
   }
 
