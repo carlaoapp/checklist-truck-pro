@@ -307,6 +307,31 @@ function captureCurrentLocation() {
 }
 
 // ==========================================
+// ==========================================
+// ÍCONES REPRESENTATIVOS PARA CADA ITEM DO CHECKLIST
+// ==========================================
+function getItemIconSvg(itemId) {
+  switch (itemId) {
+    case 'pneus':
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>`;
+    case 'freios':
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><path d="M8 18h8"/></svg>`;
+    case 'iluminacao':
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2v2"/><path d="M12 14a4 4 0 1 0-4-4c0 1.5.8 2.8 2 3.5"/></svg>`;
+    case 'quinta_roda':
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`;
+    case 'fluidos':
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`;
+    case 'amarracao':
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
+    case 'documentos':
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><line x1="15" y1="8" x2="17" y2="8"/><line x1="15" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/></svg>`;
+    default:
+      return `<svg class="ui-icon item-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`;
+  }
+}
+
+// ==========================================
 // REQUISITO 1: RENDERIZAÇÃO DAS CAIXINHAS COM MÍDIAS DENTRO DE CADA UMA
 // ==========================================
 async function renderChecklistItems() {
@@ -329,13 +354,17 @@ async function renderChecklistItems() {
     const itemMedias = allMedias.filter(m => m.itemId === item.id);
 
     card.innerHTML = `
-      <div class="check-item-top">
-        <div>
-          <div class="check-item-title">${item.title}</div>
-          ${item.desc ? `<div class="check-item-desc">${item.desc}</div>` : ''}
+      <!-- Cabeçalho Linear e Alinhado com Ícone Representativo -->
+      <div class="check-item-header-linear">
+        <div class="check-item-icon-box">
+          ${getItemIconSvg(item.id)}
+        </div>
+        <div class="check-item-text-wrap">
+          <div class="check-item-title">${escapeHtml(item.title)}</div>
+          ${item.desc ? `<div class="check-item-desc">${escapeHtml(item.desc)}</div>` : ''}
         </div>
         ${item.isCustom ? `
-          <button type="button" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem; color: #f87171; display: inline-flex; align-items: center; gap: 4px;" onclick="removeCustomItem('${item.id}')">
+          <button type="button" class="btn-icon" style="padding: 4px 8px; font-size: 0.75rem; color: #f87171; border-color: rgba(239, 68, 68, 0.4); display: inline-flex; align-items: center; gap: 4px;" onclick="removeCustomItem('${item.id}')">
             <svg class="ui-icon" style="width:13px;height:13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Excluir
           </button>
         ` : ''}
@@ -367,7 +396,7 @@ async function renderChecklistItems() {
         <div class="item-media-header">
           <span class="item-media-title">
             <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-            <span>Mídias deste Item (${itemMedias.length})</span>
+            <span>Fotos e Vídeos deste Item (${itemMedias.length})</span>
           </span>
         </div>
 
@@ -401,6 +430,7 @@ async function renderChecklistItems() {
   });
 
   updateBadges();
+  updateMediaShareCount();
 }
 
 function renderItemMediasHtml(medias) {
@@ -410,8 +440,17 @@ function renderItemMediasHtml(medias) {
 
   return medias.map(m => {
     const blobUrl = URL.createObjectURL(m.blob);
+    const isSelected = (m.includeInShare !== false);
     return `
       <div class="item-media-card ${m.resolved ? 'is-resolved' : ''}" id="mediaCard_${m.id}">
+        <!-- Checkbox de Seleção para Envio -->
+        <div class="media-share-toggle">
+          <label class="custom-checkbox-label">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleMediaShare('${m.id}', this.checked)">
+            <span>Compartilhar foto/vídeo no WhatsApp</span>
+          </label>
+        </div>
+
         <div class="item-media-preview">
           ${m.type === 'photo'
             ? `<img src="${blobUrl}" alt="Registro Fotográfico" loading="lazy">`
@@ -422,10 +461,10 @@ function renderItemMediasHtml(medias) {
                placeholder="Anotação técnica da ocorrência..." value="${escapeHtml(m.notes || '')}" oninput="updateMediaNotes('${m.id}', this.value)">
         
         <div class="item-media-actions">
-          <button type="button" class="btn-icon" style="font-size: 0.78rem; min-height: 36px; ${m.resolved ? 'background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981;' : 'color: #fbbf24;'}" onclick="toggleMediaResolved('${m.id}')">
+          <button type="button" class="btn-media-status ${m.resolved ? 'resolved' : 'pending'}" onclick="toggleMediaResolved('${m.id}')">
             ${m.resolved ? 'Resolvido' : 'Pendente'}
           </button>
-          <button type="button" class="btn-icon" style="font-size: 0.78rem; min-height: 36px; color: #f87171; border-color: rgba(239, 68, 68, 0.4);" onclick="deleteMedia('${m.id}')">
+          <button type="button" class="btn-media-delete" onclick="deleteMedia('${m.id}')">
             <svg class="ui-icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             <span>Excluir</span>
           </button>
@@ -530,9 +569,7 @@ async function handleIncomingFiles(fileList, mediaType) {
     const ext = originalFile.name.split('.').pop() || (mediaType === 'photo' ? 'jpg' : 'mp4');
     const filename = `VISTORIA_${plate}_${activeTargetItemId}_${timestamp}_${i + 1}.${ext}`;
 
-    // Dispara download local imediato na galeria/downloads do aparelho
-    downloadFileLocally(originalFile, filename);
-
+    // Salvamento AUTOMÁTICO e transparente no banco de dados local do celular (sem popups de download)
     const mediaItem = {
       id: `media_${timestamp}_${Math.random().toString(36).substring(2, 6)}`,
       checklistId: activeChecklist.id,
@@ -544,7 +581,7 @@ async function handleIncomingFiles(fileList, mediaType) {
       timestamp: timestamp,
       notes: '',
       resolved: false,
-      selected: true
+      includeInShare: true
     };
 
     await window.TruckDB.addMediaRecord(mediaItem);
@@ -559,11 +596,49 @@ async function handleIncomingFiles(fileList, mediaType) {
   }
 
   updateBadges();
-  showToast(`${countAdded} mídia(s) salva(s) no aparelho e vinculada(s) ao item!`, 'success');
+  await updateMediaShareCount();
+  showToast(`${countAdded} mídia(s) salva(s) no aparelho!`, 'success');
 }
 
 async function updateMediaNotes(mediaId, notes) {
   await window.TruckDB.updateMediaRecord(mediaId, { notes });
+}
+
+async function toggleMediaShare(mediaId, isChecked) {
+  await window.TruckDB.updateMediaRecord(mediaId, { includeInShare: isChecked });
+  await updateMediaShareCount();
+}
+
+async function toggleSelectAllMedias() {
+  if (!activeChecklist) return;
+  const allMedias = await window.TruckDB.getMediaByChecklist(activeChecklist.id);
+  if (allMedias.length === 0) {
+    showToast('Nenhuma foto ou vídeo anexado ainda.', 'info');
+    return;
+  }
+
+  // Se houver qualquer mídia desmarcada, seleciona todas. Caso contrário, desmarca todas.
+  const hasUnselected = allMedias.some(m => m.includeInShare === false);
+  const targetState = hasUnselected;
+
+  for (const m of allMedias) {
+    await window.TruckDB.updateMediaRecord(m.id, { includeInShare: targetState });
+  }
+
+  // Atualiza as caixinhas e o contador
+  await renderChecklistItems();
+  await updateMediaShareCount();
+  showToast(targetState ? 'Todas as mídias selecionadas para envio!' : 'Todas as mídias desmarcadas do envio.', 'success');
+}
+
+async function updateMediaShareCount() {
+  if (!activeChecklist) return;
+  const allMedias = await window.TruckDB.getMediaByChecklist(activeChecklist.id);
+  const selectedCount = allMedias.filter(m => m.includeInShare !== false).length;
+  const countEl = document.getElementById('mediaShareCountText');
+  if (countEl) {
+    countEl.textContent = `Mídias: ${selectedCount} de ${allMedias.length} selecionadas para envio`;
+  }
 }
 
 async function toggleMediaResolved(mediaId) {
@@ -599,6 +674,7 @@ async function deleteMedia(mediaId) {
     }
 
     updateBadges();
+    await updateMediaShareCount();
     showToast('Mídia excluída.', 'success');
   }
 }
@@ -820,7 +896,8 @@ async function generateChecklistReportText(checklistId) {
   });
 
   report += `--------------------------------------\n`;
-  report += `*MÍDIAS ANEXADAS (${medias.length}):*\n`;
+  const selectedMedias = medias.filter(m => m.includeInShare !== false);
+  report += `*MÍDIAS DA VISTORIA (${selectedMedias.length} de ${medias.length} selecionadas):*\n`;
   if (medias.length === 0) {
     report += `Nenhum anexo registrado.\n`;
   } else {
@@ -829,7 +906,8 @@ async function generateChecklistReportText(checklistId) {
       const itemTitle = parentItem ? parentItem.title : 'Item';
       const status = m.resolved ? '[RESOLVIDO]' : '[PENDENTE]';
       const typeStr = m.type === 'photo' ? 'Foto' : 'Vídeo';
-      report += `${idx + 1}. [${itemTitle}] ${typeStr} - ${status}\n`;
+      const shareIndicator = (m.includeInShare !== false) ? '✓ [ENVIADO]' : '✗ [NÃO ENVIADO]';
+      report += `${idx + 1}. [${itemTitle}] ${typeStr} - ${status} ${shareIndicator}\n`;
       if (m.notes && m.notes.trim()) {
         report += `   ↳ Obs: ${m.notes.trim()}\n`;
       }
@@ -842,10 +920,52 @@ async function generateChecklistReportText(checklistId) {
 }
 
 async function shareReportViaWhatsApp(checklistId) {
-  const text = await generateChecklistReportText(checklistId);
+  const targetId = checklistId || (activeChecklist ? activeChecklist.id : null);
+  if (!targetId) return;
+
+  const chk = await window.TruckDB.getChecklist(targetId) || activeChecklist;
+  const text = await generateChecklistReportText(targetId);
+  const medias = await window.TruckDB.getMediaByChecklist(targetId);
+  const selectedMedias = medias.filter(m => m.includeInShare !== false);
+
+  const filesToShare = [];
+  for (const m of selectedMedias) {
+    if (m.blob) {
+      const ext = m.type === 'photo' ? 'jpg' : 'mp4';
+      const mime = m.mimeType || (m.type === 'photo' ? 'image/jpeg' : 'video/mp4');
+      const filename = m.name || `VISTORIA_${(chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '')}_${m.id}.${ext}`;
+      const f = new File([m.blob], filename, { type: mime });
+      filesToShare.push(f);
+    }
+  }
+
+  // Tenta compartilhamento nativo direto com fotos e vídeos anexados (Android / iOS)
+  if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
+    try {
+      await navigator.share({
+        title: `Vistoria Veicular - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`,
+        text: text,
+        files: filesToShare
+      });
+      showToast('Vistoria e mídias compartilhadas com sucesso!', 'success');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        // Usuário cancelou ou fechou a gaveta de compartilhamento
+        return;
+      }
+      console.warn('Falha no Web Share com arquivos, usando fallback:', err);
+    }
+  }
+
+  // Fallback (se o navegador não suportar compartilhamento de arquivos via Web Share API)
   try {
     await navigator.clipboard.writeText(text);
-    showToast('Relatório copiado! Abrindo WhatsApp...', 'success');
+    if (filesToShare.length > 0) {
+      showToast(`${filesToShare.length} mídia(s) selecionada(s). Relatório copiado! Abrindo WhatsApp...`, 'success');
+    } else {
+      showToast('Relatório copiado! Abrindo WhatsApp...', 'success');
+    }
   } catch (e) {
     showToast('Abrindo WhatsApp...', 'success');
   }

@@ -195,15 +195,26 @@
           <h2 class="card-title" style="margin-bottom: 2px;">Caixas de Inspeção</h2>
           <p class="card-subtitle" style="margin-bottom: 0;">Avalie cada item e anexe fotos/vídeos direto na caixinha</p>
         </div>
-        <button type="button" id="btnOpenAddCustomItem" class="btn-icon" style="background: var(--bg-card); border-color: var(--border-color);">
-          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>Novo Item</span>
+        <button type="button" id="btnOpenAddCustomItem" class="btn-add-item-highlight">
+          <svg class="ui-icon" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>+ Novo Item</span>
         </button>
       </div>
 
       <!-- Container das Caixinhas de Inspeção (com mídias integradas em cada uma) -->
       <div id="checklistContainer">
         <!-- Renderizado dinamicamente via app.js -->
+      </div>
+
+      <!-- Barra Global de Seleção de Mídias para Compartilhar -->
+      <div class="media-bulk-share-bar" id="mediaBulkShareBar">
+        <div class="media-bulk-info">
+          <svg class="ui-icon" style="color: #60a5fa;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          <span id="mediaShareCountText">Mídias: 0 selecionadas para envio</span>
+        </div>
+        <button type="button" id="btnToggleSelectAllMedias" class="btn-toggle-all-medias" onclick="toggleSelectAllMedias()">
+          Marcar / Desmarcar Todas
+        </button>
       </div>
 
       <!-- Barra de Ações Rápidas: Salvar, Concluir e Compartilhar -->
