@@ -1,0 +1,12 @@
+{
+  "name": "checklist-truck-pro",
+  "version": "1.0.0",
+  "description": "PWA Checklist Rodoviário para Bitrem & Frotas",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["pwa", "truck", "checklist", "bitrem", "frotas"],
+  "author": "",
+  "license": "ISC"
+}
