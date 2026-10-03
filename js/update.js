@@ -13,7 +13,7 @@
  * version.json e o CACHE_NAME em sw.js para o mesmo número.
  */
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 
 const UPDATE_CHECK_INTERVAL_MS = 60000;
 let updatePromptShownFor = null;
@@ -144,10 +144,116 @@ async function applyUpdate(newVersion, box) {
 }
 
 // ==========================================
+// BAIXAR / INSTALAR APLICATIVO (PWA INSTALL PROMPT)
+// ==========================================
+let deferredInstallPrompt = null;
+
+function isAppInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+}
+
+function showInstallPrompt() {
+  if (isAppInstalled()) return;
+  if (sessionStorage.getItem('pwa_install_dismissed') === 'true') return;
+  if (document.getElementById('pwaInstallPromptBox')) return;
+
+  const box = document.createElement('div');
+  box.id = 'pwaInstallPromptBox';
+  box.className = 'app-install-prompt';
+  box.setAttribute('role', 'dialog');
+  box.innerHTML = `
+    <div class="app-install-card">
+      <div class="app-install-header">
+        <img src="icons/icon-192.png" alt="Logo Truck Pro" class="app-install-logo">
+        <div class="app-install-info">
+          <div class="app-install-title">Baixar Checklist Truck Pro?</div>
+          <div class="app-install-subtitle">Acesso rápido e funcionamento 100% offline</div>
+        </div>
+      </div>
+      <div class="app-install-desc">
+        Deseja instalar o aplicativo no seu aparelho? Ele fica salvo na tela inicial e abre instantaneamente mesmo sem sinal de internet na estrada.
+      </div>
+      <div class="app-install-buttons">
+        <button id="btnPwaInstallNow" type="button" class="btn-pwa-install-now">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Baixar / Instalar App</span>
+        </button>
+        <button id="btnPwaInstallDismiss" type="button" class="btn-pwa-install-later">Agora Não</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(box);
+
+  document.getElementById('btnPwaInstallNow').addEventListener('click', () => triggerAppInstall(box));
+  document.getElementById('btnPwaInstallDismiss').addEventListener('click', () => {
+    sessionStorage.setItem('pwa_install_dismissed', 'true');
+    box.classList.add('closing');
+    setTimeout(() => box.remove(), 350);
+  });
+}
+
+async function triggerAppInstall(boxEl = null) {
+  if (deferredInstallPrompt) {
+    try {
+      deferredInstallPrompt.prompt();
+      const choiceResult = await deferredInstallPrompt.userChoice;
+      if (choiceResult.outcome === 'accepted') {
+        showToast('Instalando aplicativo na sua tela inicial...', 'success');
+        if (boxEl) boxEl.remove();
+        const headerBtn = document.getElementById('btnInstallApp');
+        if (headerBtn) headerBtn.style.display = 'none';
+      } else {
+        showToast('Instalação adiada.', 'info');
+      }
+      deferredInstallPrompt = null;
+    } catch (e) {
+      console.warn('Erro ao acionar prompt de instalação:', e);
+    }
+  } else if (isIOS()) {
+    alert("Para baixar no iPhone/iPad:\n1. Toque no botão de Compartilhar (ícone com seta para cima 📤) no Safari;\n2. Role para baixo e selecione 'Adicionar à Tela de Início' 📲.");
+  } else {
+    showToast("Para instalar: toque no menu do navegador (3 pontinhos) e escolha 'Instalar aplicativo' ou 'Adicionar à tela inicial'.", 'info');
+  }
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+
+  const headerBtn = document.getElementById('btnInstallApp');
+  if (headerBtn && !isAppInstalled()) {
+    headerBtn.style.display = 'inline-flex';
+  }
+
+  // Exibe a caixinha perguntando se o usuário quer ou não baixar o app após 1.5s
+  setTimeout(showInstallPrompt, 1500);
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  const box = document.getElementById('pwaInstallPromptBox');
+  if (box) box.remove();
+  const headerBtn = document.getElementById('btnInstallApp');
+  if (headerBtn) headerBtn.style.display = 'none';
+  showToast('Aplicativo Checklist Truck Pro instalado com sucesso!', 'success');
+});
+
+// ==========================================
 // INICIALIZAÇÃO
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
   renderAppVersionTags();
+
+  // Se for iOS e não estiver instalado, disponibiliza o botão no topo
+  if (isIOS() && !isAppInstalled()) {
+    const headerBtn = document.getElementById('btnInstallApp');
+    if (headerBtn) headerBtn.style.display = 'inline-flex';
+  }
 
   setTimeout(() => checkForUpdates(false), 2500);
   setInterval(() => checkForUpdates(false), UPDATE_CHECK_INTERVAL_MS);
@@ -160,3 +266,5 @@ document.addEventListener('DOMContentLoaded', () => {
 window.APP_VERSION = APP_VERSION;
 window.checkForUpdates = checkForUpdates;
 window.showUpdatePrompt = showUpdatePrompt;
+window.triggerAppInstall = triggerAppInstall;
+window.showInstallPrompt = showInstallPrompt;

@@ -1684,3 +1684,135 @@ label {
   from { opacity: 0; transform: translateX(-50%) translateY(-24px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+
+/* ======================================================================
+   POPUP DE INSTALAÇÃO DO APP (BAIXAR / INSTALAR PWA)
+   ====================================================================== */
+.app-install-prompt {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92%;
+  max-width: 440px;
+  box-sizing: border-box;
+  z-index: 9999998;
+  animation: installSlideUp 0.35s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.app-install-prompt.closing {
+  opacity: 0;
+  transform: translateX(-50%) translateY(25px);
+}
+
+.app-install-card {
+  background: var(--bg-card, #111827);
+  border: 2px solid #2563eb;
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app-install-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-install-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.app-install-info {
+  flex: 1;
+}
+
+.app-install-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.25;
+}
+
+.app-install-subtitle {
+  font-size: 0.8rem;
+  color: #93c5fd;
+  margin-top: 2px;
+}
+
+.app-install-desc {
+  font-size: 0.86rem;
+  color: #e2e8f0;
+  line-height: 1.4;
+}
+
+.app-install-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-pwa-install-now {
+  flex: 1.3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-weight: 800;
+  font-size: 0.92rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+  transition: all 0.15s ease;
+}
+
+.btn-pwa-install-now:hover, .btn-pwa-install-now:active {
+  background: #1d4ed8;
+  transform: scale(0.98);
+}
+
+.btn-pwa-install-now .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-pwa-install-later {
+  flex: 0.7;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-pwa-install-later:hover, .btn-pwa-install-later:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+@keyframes installSlideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
