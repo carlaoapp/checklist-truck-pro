@@ -1,0 +1,1220 @@
+/* ======================================================================
+   CHECKLIST TRUCK PRO - BITREM & FROTAS
+   DESIGN SYSTEM - ALTO CONTRASTE, MOBILE-FIRST, ERGONOMIA DE ESTRADA
+   TEMAS INTEGRADOS (CORES E PADRÕES DO TUDO EM DIA)
+   ====================================================================== */
+
+:root {
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  
+  /* Tema Padrão: Preto / Ônix 3D Profundo (Tudo em Dia) */
+  --bg-app: #08080a;
+  --bg-card: #131316;
+  --surface-hover: #1c1c20;
+  --surface-input: #0c0c0e;
+  --border-color: #242429;
+  --border-focus: #3b82f6;
+
+  --text-main: #ffffff;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1aa;
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --success: #10b981;
+  --success-hover: #059669;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 9999px;
+
+  --min-input-height: 48px;
+  --min-btn-height: 52px;
+}
+
+/* ======================================================================
+   PALETAS DE CORES PRONTAS DO TUDO EM DIA
+   ====================================================================== */
+
+/* 1. Tema Preto / Ônix 3D (Default) */
+body.theme-preto {
+  --bg-app: #08080a;
+  --bg-card: #131316;
+  --surface-hover: #1c1c20;
+  --surface-input: #0c0c0e;
+  --border-color: #242429;
+  --border-focus: #52525c;
+  --text-main: #ffffff;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1aa;
+  --primary: #3f3f46;
+  --primary-hover: #52525b;
+}
+
+/* 2. Tema Azul Safira (Prisma 3D) */
+body.theme-azul {
+  --bg-app: #060e22;
+  --bg-card: #0d1e3d;
+  --surface-hover: #162f5e;
+  --surface-input: #081329;
+  --border-color: #1a386e;
+  --border-focus: #38bdf8;
+  --text-main: #ffffff;
+  --text-secondary: #dbeafe;
+  --text-muted: #93c5fd;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+}
+
+/* 3. Tema Verde Oceânico (Petróleo 3D) */
+body.theme-verde {
+  --bg-app: #081a1f;
+  --bg-card: #0f2c34;
+  --surface-hover: #184754;
+  --surface-input: #0a2026;
+  --border-color: #1c4955;
+  --border-focus: #14b8a6;
+  --text-main: #ffffff;
+  --text-secondary: #ccfbf1;
+  --text-muted: #99f6e4;
+  --primary: #0d9488;
+  --primary-hover: #0f766e;
+}
+
+/* 4. Tema Roxo Cósmico (Nebulosa 3D) */
+body.theme-roxo {
+  --bg-app: #0e0d1d;
+  --bg-card: #1b1933;
+  --surface-hover: #2e2b58;
+  --surface-input: #131126;
+  --border-color: #332f5e;
+  --border-focus: #6366f1;
+  --text-main: #ffffff;
+  --text-secondary: #e0e7ff;
+  --text-muted: #a5b4fc;
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+}
+
+/* 5. Tema Cinza Grafite (Estúdio 3D) */
+body.theme-cinza {
+  --bg-app: #18191b;
+  --bg-card: #26282c;
+  --surface-hover: #3a3e44;
+  --surface-input: #1e1f22;
+  --border-color: #3f4247;
+  --border-focus: #64748b;
+  --text-main: #ffffff;
+  --text-secondary: #e2e8f0;
+  --text-muted: #94a3b8;
+  --primary: #475569;
+  --primary-hover: #334155;
+}
+
+/* 6. Tema Rosa Escuro / Terracota 3D */
+body.theme-rosa {
+  --bg-app: #170910;
+  --bg-card: #28111c;
+  --surface-hover: #451d32;
+  --surface-input: #1e0b15;
+  --border-color: #4d1d33;
+  --border-focus: #fb7185;
+  --text-main: #ffffff;
+  --text-secondary: #ffe4e6;
+  --text-muted: #fda4af;
+  --primary: #e11d48;
+  --primary-hover: #be123c;
+}
+
+/* 7. Tema Claro (Suave, Clean) */
+body.theme-claro {
+  --bg-app: #f1f5f9;
+  --bg-card: #ffffff;
+  --surface-hover: #e2e8f0;
+  --surface-input: #f8fafc;
+  --border-color: #cbd5e1;
+  --border-focus: #3b82f6;
+  --text-main: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  font-family: var(--font-family);
+  font-size: 16px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding-bottom: 90px;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ======================================================================
+   ÍCONES VETORIAIS PROFISSIONAIS (SUBSTITUIÇÃO DE EMOJIS)
+   ====================================================================== */
+.ui-icon {
+  width: 17px;
+  height: 17px;
+  display: inline-block;
+  vertical-align: middle;
+  stroke: currentColor;
+  stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.tab-icon {
+  width: 20px;
+  height: 20px;
+  margin-bottom: 2px;
+}
+
+/* ======================================================================
+   TOPO FIXO UNIFICADO (HEADER + ABAS DE NAVEGAÇÃO)
+   ====================================================================== */
+.top-bar-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: var(--bg-app);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-header {
+  background-color: rgba(11, 17, 32, 0.96);
+  backdrop-filter: blur(10px);
+  padding: 12px 14px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+body.theme-claro .app-header {
+  background-color: rgba(255, 255, 255, 0.96);
+}
+
+/* Linha 1: Nome do App SOZINHO na linha */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.brand-icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.brand-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.brand-subtitle {
+  font-size: 0.70rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Linha 2: Botões organizados abaixo */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.btn-header-action {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn-header-action:hover, .btn-header-action:active {
+  background: var(--surface-hover);
+  border-color: var(--primary);
+}
+
+.offline-pill {
+  font-size: 0.72rem;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  font-weight: 800;
+  border: 1px solid #16a34a;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+}
+
+.offline-pill.is-offline {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fde047;
+  border-color: #ca8a04;
+}
+
+/* ======================================================================
+   TABS NAVIGATION (3 ABAS)
+   ====================================================================== */
+.tabs-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  padding: 6px 12px 10px 12px;
+  background-color: var(--bg-app);
+}
+
+.tab-btn {
+  background: var(--bg-card);
+  color: var(--text-muted);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  min-height: 48px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  text-align: center;
+  padding: 4px 6px;
+}
+
+.tab-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: #93c5fd;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+.tab-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--bg-app);
+}
+
+/* ======================================================================
+   CONTAINER & SECTIONS
+   ====================================================================== */
+.main-container {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 8px 14px 40px 14px;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Cards */
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 16px 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.card-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-subtitle {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+/* ======================================================================
+   FORM CONTROLS (TARGETS >= 48px)
+   ====================================================================== */
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .form-row.stack-mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.input-control,
+.select-control {
+  width: 100%;
+  min-height: var(--min-input-height);
+  background-color: var(--surface-input);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-control:focus,
+.select-control:focus {
+  border-color: var(--border-focus);
+}
+
+.input-plate {
+  text-transform: uppercase;
+  font-family: monospace, var(--font-family);
+  font-size: 1.15rem;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+}
+
+.btn-gps {
+  background-color: rgba(37, 99, 235, 0.15);
+  color: #93c5fd;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-md);
+  min-height: var(--min-btn-height);
+  width: 100%;
+  font-size: 1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+}
+
+.btn-gps:hover {
+  background-color: var(--primary);
+  color: #ffffff;
+}
+
+.location-coords {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+/* ======================================================================
+   CHECKLIST: CAIXINHAS INDIVIDUAIS COM MÍDIAS DENTRO DE CADA UMA
+   ====================================================================== */
+.checklist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 8px;
+}
+
+.check-item-card {
+  background-color: var(--surface-input);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 14px;
+  transition: border-color 0.2s;
+}
+
+.check-item-card.status-ok {
+  border-color: #10b981;
+  background-color: rgba(16, 185, 129, 0.08);
+}
+
+.check-item-card.status-warn {
+  border-color: #f59e0b;
+  background-color: rgba(245, 158, 11, 0.08);
+}
+
+.check-item-card.status-danger {
+  border-color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.check-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.check-item-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.check-item-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.state-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.state-btn {
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--surface-input);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.state-btn.btn-ok.active {
+  background: #059669;
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+.state-btn.btn-warn.active {
+  background: #b45309;
+  border-color: #f59e0b;
+  color: #ffffff;
+}
+
+.state-btn.btn-danger.active {
+  background: #b91c1c;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.check-item-note {
+  margin-top: 10px;
+  display: none;
+}
+
+.check-item-note.visible {
+  display: block;
+}
+
+.check-item-note input {
+  width: 100%;
+  min-height: 44px;
+  background: var(--bg-app);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 8px 12px;
+  font-size: 0.92rem;
+}
+
+/* ======================================================================
+   REQUISITO 1: ÁREA DE MÍDIAS DENTRO DE CADA CAIXINHA
+   ====================================================================== */
+.item-media-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.item-media-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.item-media-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.item-media-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 480px) {
+  .item-media-buttons {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.btn-item-media {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 8px 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  transition: all 0.15s;
+}
+
+.btn-item-media:hover, .btn-item-media:active {
+  background: var(--surface-hover);
+  color: var(--text-main);
+  border-color: var(--border-focus);
+}
+
+/* Lista de Mídias DENTRO do Item */
+.item-media-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.item-media-card {
+  background: var(--bg-app);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  position: relative;
+}
+
+.item-media-card.is-resolved {
+  border-color: #10b981;
+  background-color: rgba(16, 185, 129, 0.08);
+}
+
+.item-media-preview {
+  width: 100%;
+  max-height: 240px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.item-media-preview img,
+.item-media-preview video {
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.item-media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ======================================================================
+   REQUISITO 2: BOTÕES EXPLÍCITOS DE SALVAR E CONCLUIR
+   ====================================================================== */
+.floating-actions-bar {
+  background: var(--bg-card);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  margin-top: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.actions-grid-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 480px) {
+  .actions-grid-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+.btn-action-save {
+  background-color: var(--primary);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  min-height: var(--min-btn-height);
+  font-size: 1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-action-save:hover {
+  background-color: var(--primary-hover);
+}
+
+.btn-action-conclude {
+  background-color: var(--success);
+  color: #ffffff;
+  border: 2px solid #34d399;
+  border-radius: var(--radius-md);
+  min-height: var(--min-btn-height);
+  font-size: 1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-action-conclude:hover {
+  background-color: var(--success-hover);
+}
+
+.btn-share-whatsapp-full {
+  background-color: #065f46;
+  border: 1px solid #10b981;
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  min-height: 48px;
+  width: 100%;
+  font-size: 0.95rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* ======================================================================
+   REQUISITO 3: ABA DE VISTORIAS (PENDENTES & CONCLUÍDOS COM AÇÕES)
+   ====================================================================== */
+.history-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.history-filter-btn {
+  background: var(--surface-input);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  min-height: 46px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.history-filter-btn.active {
+  background: var(--primary);
+  border-color: #93c5fd;
+  color: #ffffff;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.history-card {
+  background: var(--bg-card);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px 14px;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.history-card.is-concluded {
+  border-left: 6px solid var(--success);
+}
+
+.history-card.is-pending {
+  border-left: 6px solid var(--warning);
+}
+
+.history-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.history-card-plate {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  font-family: monospace, var(--font-family);
+  color: var(--text-main);
+}
+
+.history-status-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+}
+
+.history-status-badge.pending {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid #f59e0b;
+}
+
+.history-status-badge.concluded {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid #10b981;
+}
+
+.history-card-details {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.history-card-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.stat-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.stat-pill.has-defects {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+/* 4 Botões Ergonômicos por Vistoria (Editar, Concluir, Compartilhar, Excluir) */
+.history-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.btn-hist-action {
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid;
+}
+
+.btn-hist-edit {
+  background: var(--primary);
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+.btn-hist-conclude {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+  color: #34d399;
+}
+
+.btn-hist-share {
+  background: #065f46;
+  border-color: #34d399;
+  color: #ffffff;
+}
+
+.btn-hist-delete {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+/* ======================================================================
+   REQUISITO 4: MODAL DE TEMAS (CORES DO TUDO EM DIA)
+   ====================================================================== */
+.theme-selector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.theme-card-option {
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.theme-card-option:hover {
+  transform: translateY(-2px);
+  border-color: #60a5fa;
+}
+
+.theme-card-option.active {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
+}
+
+.theme-color-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  flex-shrink: 0;
+}
+
+/* ======================================================================
+   NOTIFICAÇÕES FLUTUANTES (TOAST)
+   ====================================================================== */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 90%;
+  max-width: 440px;
+  pointer-events: none;
+}
+
+.toast {
+  background: #1e293b;
+  border: 2px solid #3b82f6;
+  color: #ffffff;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.92rem;
+  font-weight: 700;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: slideUp 0.3s ease;
+  pointer-events: auto;
+}
+
+.toast.toast-success {
+  border-color: #22c55e;
+  background: #064e3b;
+}
+
+.toast.toast-warning {
+  border-color: #eab308;
+  background: #713f12;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modais */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 200;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: var(--bg-card);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  color: var(--text-main);
+}
+
+.modal-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.modal-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.btn-secondary {
+  background: var(--surface-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  min-height: 48px;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-confirm {
+  background: var(--primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  min-height: 48px;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-confirm.danger {
+  background: var(--danger);
+}
+
+.hidden-file-input {
+  display: none !important;
+}
+
+/* ======================================================================
+   TELA DE ENTRADA (SPLASH SCREEN COM FOTO DO CAMINHÃO SCANIA)
+   ====================================================================== */
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 30%, #171c28 0%, #08080a 75%);
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.5s ease;
+}
+
+.splash-screen.fade-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash-content {
+  max-width: 420px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.splash-img-wrap {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(59, 130, 246, 0.35);
+  margin-bottom: 20px;
+  background: #08080a;
+}
+
+.splash-truck-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+.splash-title {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+
+.splash-subtitle {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+
+.splash-loader-bar {
+  width: 180px;
+  height: 5px;
+  background: #1e293b;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.splash-loader-progress {
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #38bdf8);
+  border-radius: 9999px;
+  animation: splashLoad 1.6s infinite ease-in-out;
+}
+
+@keyframes splashLoad {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(120%); }
+  100% { transform: translateX(250%); }
+}
+
+.splash-loading-text {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-bottom: 18px;
+}
+
+.btn-splash-enter {
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #60a5fa;
+  border-radius: var(--radius-md);
+  padding: 12px 28px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  min-height: 48px;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+  transition: all 0.2s;
+}
+
+.btn-splash-enter:hover {
+  background: #1d4ed8;
+  transform: translateY(-2px);
+}
