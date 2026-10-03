@@ -1,4 +1,4 @@
-const CACHE_NAME = 'truck-checklist-v12';
+const CACHE_NAME = 'truck-checklist-v1.4.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const ASSETS_TO_CACHE = [
   './js/db.js',
   './js/auth.js',
   './js/app.js',
+  './js/update.js',
   './manifest.json',
   './icons/app-truck.jpg',
   './icons/icon-192.png',
@@ -41,6 +42,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   if (!event.request.url.startsWith('http')) return;
+  // version.json sempre vem da rede (nunca do cache) para detectar novas versões
+  if (new URL(event.request.url).pathname.endsWith('/version.json')) return;
 
   event.respondWith(
     caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
