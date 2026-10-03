@@ -43,6 +43,8 @@ Write-Host "  public/ copiado para a raiz"
 $msg = "v$Version"
 if ($Message) { $msg += ": $Message" }
 git add -A
-git commit -q -m $msg
-git push origin main 2>&1 | Out-Host
-Write-Host "Versão $Version publicada. GitHub Pages leva ~1 minuto para atualizar."
+$prevEA = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+git push origin main
+$ErrorActionPreference = $prevEA
+Write-Host "Versão $Version publicada com sucesso! GitHub Pages leva ~1 minuto para atualizar."
