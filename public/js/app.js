@@ -32,12 +32,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
   setupOnlineStatus();
   setupEventListeners();
+
+  // Inicializa sistema de autenticação e isolamento de motorista
+  if (window.TruckAuth) {
+    await window.TruckAuth.initAuth();
+  }
+
   await initActiveChecklist();
   updateTrailer2Visibility();
   await refreshHistoryList();
 
-  // Transição suave da tela de entrada após 1.6s
-  setTimeout(dismissSplash, 1600);
+  // Transição suave da tela de entrada após 1.2s
+  setTimeout(dismissSplash, 1200);
 });
 
 function dismissSplash() {
@@ -146,15 +152,17 @@ async function initActiveChecklist() {
 }
 
 function createEmptyChecklist() {
+  const currentUser = window.TruckAuth ? window.TruckAuth.getAuthUser() : null;
   return {
     id: `chk_${Date.now()}`,
+    userId: currentUser ? currentUser.id : 'motorista_padrao',
     status: 'pendente',
     createdAt: new Date().toISOString(),
     vehicleType: 'Bitrem 9 Eixos',
     plateHorse: '',
     plateTrailer1: '',
     plateTrailer2: '',
-    driverName: '',
+    driverName: currentUser ? (currentUser.name || '') : '',
     currentKm: '',
     inspectionDateTime: getFormattedCurrentDateTime(),
     locationText: '',
@@ -191,6 +199,10 @@ function populateFormFromActiveChecklist() {
 
 function collectFormIntoActiveChecklist() {
   if (!activeChecklist) return;
+  const currentUser = window.TruckAuth ? window.TruckAuth.getAuthUser() : null;
+  if (currentUser && !activeChecklist.userId) {
+    activeChecklist.userId = currentUser.id;
+  }
   activeChecklist.vehicleType = document.getElementById('vehicleType').value;
   activeChecklist.plateHorse = document.getElementById('plateHorse').value;
   activeChecklist.plateTrailer1 = document.getElementById('plateTrailer1').value;
@@ -724,7 +736,9 @@ function setHistoryFilter(filter) {
 }
 
 async function refreshHistoryList() {
-  const allChecklists = await window.TruckDB.getAllChecklists();
+  const currentUser = window.TruckAuth ? window.TruckAuth.getAuthUser() : null;
+  const currentUserId = currentUser ? currentUser.id : null;
+  const allChecklists = await window.TruckDB.getAllChecklists(currentUserId);
 
   const pendingList = allChecklists.filter(c => c.status === 'pendente');
   const concludedList = allChecklists.filter(c => c.status === 'concluido');

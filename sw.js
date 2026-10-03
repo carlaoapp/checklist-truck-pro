@@ -1,9 +1,10 @@
-const CACHE_NAME = 'truck-checklist-v9';
+const CACHE_NAME = 'truck-checklist-v10';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './css/style.css',
   './js/db.js',
+  './js/auth.js',
   './js/app.js',
   './manifest.json',
   './icons/app-truck.jpg',

@@ -20,6 +20,88 @@
 </head>
 <body class="theme-preto">
 
+  <!-- TELA DE LOGIN / CADASTRO DO MOTORISTA (MODAL SEGURO) -->
+  <div id="authContainer" class="auth-modal" style="display: none;">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-icon-wrap">
+          <img src="icons/icon-192.png" alt="Logo Truck Pro" class="auth-logo-img">
+        </div>
+        <h2 id="authModalTitle" class="auth-title">CHECKLIST TRUCK PRO</h2>
+        <p id="authModalSubtitle" class="auth-subtitle">Acesso do Motorista &amp; Gestão de Frotas</p>
+      </div>
+
+      <!-- Abas Entrar e Criar Conta -->
+      <div class="auth-tabs">
+        <button type="button" id="tabAuthLogin" class="auth-tab-btn active" onclick="TruckAuth.setAuthMode('login')">
+          Entrar
+        </button>
+        <button type="button" id="tabAuthRegister" class="auth-tab-btn" onclick="TruckAuth.setAuthMode('register')">
+          Criar Conta
+        </button>
+      </div>
+
+      <!-- Mensagem de Erro de Autenticação -->
+      <div id="authErrorBox" class="auth-error-box" style="display: none;"></div>
+
+      <form id="authForm" onsubmit="event.preventDefault(); TruckAuth.handleAuthSubmit();">
+        <!-- Campo Nome Completo (exibido apenas em Criar Conta) -->
+        <div class="form-group" id="authNameGroup" style="display: none;">
+          <label for="authName">Nome Completo do Motorista:</label>
+          <input type="text" id="authName" class="input-control" placeholder="Ex: Carlos Silva" autocomplete="name">
+        </div>
+
+        <!-- Campo E-mail / Usuário -->
+        <div class="form-group">
+          <label for="authEmail">E-mail ou Usuário:</label>
+          <input type="email" id="authEmail" class="input-control" placeholder="seu-email@empresa.com" required autocomplete="username">
+        </div>
+
+        <!-- Campo Senha com Olho -->
+        <div class="form-group">
+          <label for="authPassword">Senha:</label>
+          <div class="password-input-wrap">
+            <input type="password" id="authPassword" class="input-control input-password" placeholder="Sua senha de acesso" required autocomplete="current-password">
+            <button type="button" class="btn-toggle-eye" onclick="TruckAuth.togglePasswordVisibility('authPassword', this)">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Campo Confirmar Senha (exibido apenas em Criar Conta) -->
+        <div class="form-group" id="authConfirmPwdGroup" style="display: none;">
+          <label for="authConfirmPassword">Confirmar Senha:</label>
+          <div class="password-input-wrap">
+            <input type="password" id="authConfirmPassword" class="input-control input-password" placeholder="Repita a nova senha" autocomplete="new-password">
+            <button type="button" class="btn-toggle-eye" onclick="TruckAuth.togglePasswordVisibility('authConfirmPassword', this)">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Lembrar-me -->
+        <div class="auth-remember-row">
+          <label class="custom-checkbox-label" style="font-size: 0.85rem;">
+            <input type="checkbox" id="authRemember" checked>
+            <span>Lembrar-me neste aparelho</span>
+          </label>
+        </div>
+
+        <!-- Botão Ação -->
+        <button type="submit" id="authSubmitBtn" class="btn-action-save" style="width: 100%; margin-top: 10px;">
+          <span>Entrar no Sistema</span>
+        </button>
+      </form>
+
+      <!-- Alternador de Modo -->
+      <div class="auth-footer">
+        <a href="#" id="authToggleModeLink" class="auth-link" onclick="event.preventDefault(); TruckAuth.setAuthMode(currentAuthMode === 'login' ? 'register' : 'login')">
+          Não possui conta? Cadastre-se agora.
+        </a>
+      </div>
+    </div>
+  </div>
+
   <!-- TELA DE ENTRADA (SPLASH SCREEN COM FOTO DO CAMINHÃO SCANIA) -->
   <div id="splashScreen" class="splash-screen">
     <div class="splash-content">
@@ -53,6 +135,12 @@
       </div>
       <!-- Linha 2: Botões organizados abaixo da linha do nome -->
       <div class="header-actions">
+        <!-- Usuário Ativo / Botão Sair -->
+        <div id="currentUserDisplay" class="user-pill" style="display: none;">
+          <svg class="ui-icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span id="currentUserName">Motorista</span>
+          <button type="button" class="btn-logout" title="Sair da conta" onclick="TruckAuth.logout()">Sair</button>
+        </div>
         <button id="btnOpenThemes" class="btn-header-action" title="Mudar cor do app">
           <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
           <span>Cores</span>
@@ -373,6 +461,7 @@
 
   <!-- SCRIPTS -->
   <script src="js/db.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/app.js"></script>
 
   <!-- PWA Service Worker Registration -->
