@@ -949,11 +949,12 @@ async function deleteHistoryChecklist(checklistId) {
 }
 
 // ==========================================
-// COMPARTILHAMENTO DE RELATÓRIO
+// COMPARTILHAMENTO DE RELATÓRIO E MÍDIAS
 // ==========================================
-async function generateChecklistReportText(checklistId) {
-  const chk = await window.TruckDB.getChecklist(checklistId) || activeChecklist;
-  const medias = await window.TruckDB.getMediaByChecklist(chk.id);
+function formatChecklistReportText(chk, medias) {
+  if (!chk) return '';
+  const mediaList = medias || [];
+  const selectedMedias = mediaList.filter(m => m.includeInShare !== false);
 
   let report = `*RELATÓRIO DE VISTORIA VEICULAR - TRUCK PRO*\n`;
   report += `Data/Hora: ${chk.inspectionDateTime || getFormattedCurrentDateTime()}\n`;
@@ -990,12 +991,11 @@ async function generateChecklistReportText(checklistId) {
   });
 
   report += `--------------------------------------\n`;
-  const selectedMedias = medias.filter(m => m.includeInShare !== false);
-  report += `*MÍDIAS DA VISTORIA (${selectedMedias.length} de ${medias.length} selecionadas):*\n`;
-  if (medias.length === 0) {
+  report += `*MÍDIAS DA VISTORIA (${selectedMedias.length} de ${mediaList.length} selecionadas):*\n`;
+  if (mediaList.length === 0) {
     report += `Nenhum anexo registrado.\n`;
   } else {
-    medias.forEach((m, idx) => {
+    mediaList.forEach((m, idx) => {
       const parentItem = (chk.items || []).find(i => i.id === m.itemId);
       const itemTitle = parentItem ? parentItem.title : 'Item';
       const status = m.resolved ? '[RESOLVIDO]' : '[PENDENTE]';
@@ -1013,31 +1013,91 @@ async function generateChecklistReportText(checklistId) {
   return report;
 }
 
-async function shareReportViaWhatsApp(checklistId) {
+async function generateChecklistReportText(checklistId) {
   const targetId = checklistId || (activeChecklist ? activeChecklist.id : null);
-  if (!targetId) return;
+  if (!targetId) return '';
+  const [chk, medias] = await Promise.all([
+    window.TruckDB.getChecklist(targetId),
+    window.TruckDB.getMediaByChecklist(targetId)
+  ]);
+  return formatChecklistReportText(chk || activeChecklist, medias);
+}
 
-  const chk = await window.TruckDB.getChecklist(targetId) || activeChecklist;
-  const text = await generateChecklistReportText(targetId);
-  const medias = await window.TruckDB.getMediaByChecklist(targetId);
-  const selectedMedias = medias.filter(m => m.includeInShare !== false);
+function prepareMediaFiles(medias, plate) {
+  const files = [];
+  const cleanPlate = (plate || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
 
-  const filesToShare = [];
-  for (const m of selectedMedias) {
-    if (m.blob) {
-      const ext = m.type === 'photo' ? 'jpg' : 'mp4';
-      const mime = m.mimeType || (m.type === 'photo' ? 'image/jpeg' : 'video/mp4');
-      const filename = m.name || `VISTORIA_${(chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '')}_${m.id}.${ext}`;
-      const f = new File([m.blob], filename, { type: mime });
-      filesToShare.push(f);
+  for (let i = 0; i < (medias || []).length; i++) {
+    const m = medias[i];
+    if (!m || !m.blob) continue;
+
+    try {
+      const isPhoto = (m.type === 'photo');
+      const ext = isPhoto ? 'jpg' : 'mp4';
+      const defaultMime = isPhoto ? 'image/jpeg' : 'video/mp4';
+      const mime = m.mimeType || (m.blob && m.blob.type) || defaultMime;
+      const filename = m.name || `VISTORIA_${cleanPlate}_${m.itemId || 'item'}_${i + 1}.${ext}`;
+
+      let file;
+      if (m.blob instanceof File) {
+        file = m.blob;
+      } else {
+        file = new File([m.blob], filename, { type: mime, lastModified: m.timestamp || Date.now() });
+      }
+      files.push(file);
+    } catch (err) {
+      console.warn('[Share] Erro ao preparar arquivo de mídia:', err);
     }
   }
+  return files;
+}
 
-  // Tenta compartilhamento nativo direto com fotos e vídeos anexados (Android / iOS)
+async function shareReportViaWhatsApp(checklistId) {
+  const targetId = checklistId || (activeChecklist ? activeChecklist.id : null);
+  if (!targetId) {
+    showToast('Nenhum checklist disponível para compartilhar.', 'warning');
+    return;
+  }
+
+  // Se for o checklist ativo na tela, salva os dados mais recentes imediatamente
+  if (activeChecklist && activeChecklist.id === targetId) {
+    collectFormIntoActiveChecklist();
+    await window.TruckDB.saveChecklist(activeChecklist);
+  }
+
+  // Busca rápida em paralelo dos dados e mídias com máxima performance
+  const [chkData, medias] = await Promise.all([
+    window.TruckDB.getChecklist(targetId),
+    window.TruckDB.getMediaByChecklist(targetId)
+  ]);
+
+  const chk = chkData || activeChecklist;
+  if (!chk) {
+    showToast('Vistoria não encontrada.', 'warning');
+    return;
+  }
+
+  const text = formatChecklistReportText(chk, medias);
+  const selectedMedias = (medias || []).filter(m => m.includeInShare !== false);
+  const filesToShare = prepareMediaFiles(selectedMedias, chk.plateHorse);
+  const shareTitle = `Vistoria Veicular - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
+
+  // Copia o relatório com segurança para o clipboard
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    }
+  } catch (clipErr) {
+    console.warn('[Share] Clipboard write:', clipErr);
+  }
+
+  // 1. TENTATIVA: Compartilhamento Nativo Direto com Mídias e Texto (Android/iOS)
+  // O Android abre a gaveta nativa e quando o usuário seleciona WhatsApp, envia fotos/vídeos e texto juntos!
   if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
     try {
+      showToast('Compartilhando vistoria com fotos e vídeos...', 'info');
       await navigator.share({
-        title: `Vistoria Veicular - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`,
+        title: shareTitle,
         text: text,
         files: filesToShare
       });
@@ -1045,27 +1105,58 @@ async function shareReportViaWhatsApp(checklistId) {
       return;
     } catch (err) {
       if (err.name === 'AbortError') {
-        // Usuário cancelou ou fechou a gaveta de compartilhamento
+        // Usuário fechou ou cancelou o menu de compartilhamento
         return;
       }
-      console.warn('Falha no Web Share com arquivos, usando fallback:', err);
+      console.warn('[Share] Tentativa 1 com arquivos+texto falhou:', err);
+
+      // 2. TENTATIVA: Compartilhar apenas os arquivos (o texto já foi copiado para a área de transferência)
+      try {
+        await navigator.share({
+          title: shareTitle,
+          files: filesToShare
+        });
+        showToast('Fotos/Vídeos enviados! O texto do relatório foi copiado para colar no WhatsApp.', 'success');
+        return;
+      } catch (err2) {
+        if (err2.name === 'AbortError') return;
+        console.warn('[Share] Tentativa 2 apenas com arquivos falhou:', err2);
+      }
     }
   }
 
-  // Fallback (se o navegador não suportar compartilhamento de arquivos via Web Share API)
-  try {
-    await navigator.clipboard.writeText(text);
-    if (filesToShare.length > 0) {
-      showToast(`${filesToShare.length} mídia(s) selecionada(s). Relatório copiado! Abrindo WhatsApp...`, 'success');
-    } else {
-      showToast('Relatório copiado! Abrindo WhatsApp...', 'success');
+  // 3. TENTATIVA: Compartilhamento Nativo de Texto
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: shareTitle,
+        text: text
+      });
+      showToast('Relatório de vistoria compartilhado com sucesso!', 'success');
+      return;
+    } catch (err3) {
+      if (err3.name === 'AbortError') return;
+      console.warn('[Share] Tentativa 3 com texto falhou:', err3);
     }
-  } catch (e) {
-    showToast('Abrindo WhatsApp...', 'success');
   }
 
-  const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-  window.open(url, '_blank');
+  // 4. FALLBACK: Redirecionamento Direto para o WhatsApp sem disparar bloqueador de pop-ups
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const encodedText = encodeURIComponent(text);
+  const whatsappUrl = isMobile 
+    ? `whatsapp://send?text=${encodedText}` 
+    : `https://api.whatsapp.com/send?text=${encodedText}`;
+
+  if (filesToShare.length > 0) {
+    showToast(`${filesToShare.length} mídia(s) na vistoria. Relatório copiado! Abrindo WhatsApp...`, 'success');
+  } else {
+    showToast('Relatório copiado! Abrindo WhatsApp...', 'success');
+  }
+
+  // Redirecionamento limpo na mesma janela (evita 100% o bloqueio de pop-ups do navegador)
+  setTimeout(() => {
+    window.location.href = whatsappUrl;
+  }, 100);
 }
 
 // ==========================================
