@@ -16,7 +16,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=8">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=8">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png?v=8">
-  <link rel="stylesheet" href="css/style.css?v=1.5.5">
+  <link rel="stylesheet" href="css/style.css?v=1.5.6">
 </head>
 <body class="theme-preto">
 
@@ -98,7 +98,7 @@
         <a href="#" id="authToggleModeLink" class="auth-link" onclick="event.preventDefault(); TruckAuth.setAuthMode(currentAuthMode === 'login' ? 'register' : 'login')">
           Não possui conta? Cadastre-se agora.
         </a>
-        <div class="auth-version">Versão <span class="app-version-tag">1.5.5</span></div>
+        <div class="auth-version">Versão <span class="app-version-tag">1.5.6</span></div>
       </div>
     </div>
   </div>
@@ -120,7 +120,7 @@
       <button type="button" id="btnEnterApp" class="btn-splash-enter" onclick="dismissSplash()">
         Acessar Checklist
       </button>
-      <p class="splash-version">Versão <span class="app-version-tag">1.5.5</span></p>
+      <p class="splash-version">Versão <span class="app-version-tag">1.5.6</span></p>
     </div>
   </div>
 
@@ -140,7 +140,7 @@
           <div id="connectionStatus" class="offline-pill">● Conectado</div>
           <button type="button" id="btnCheckUpdate" class="version-pill" title="Toque para verificar atualização" onclick="checkForUpdates(true)">
             <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span class="app-version-tag">v1.5.5</span>
+            <span class="app-version-tag">v1.5.6</span>
           </button>
         </div>
       </div>
@@ -498,23 +498,29 @@
 
       <!-- Botões de Ação de Compartilhamento -->
       <div style="display: flex; flex-direction: column; gap: 10px;">
-        <!-- 1. WhatsApp / Gaveta Nativa com Fotos e Vídeos -->
-        <button type="button" id="btnExecuteDirectShare" class="btn-share-whatsapp-full" style="font-size: 0.98rem; padding: 13px 16px; justify-content: center; box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);" onclick="executeShareNativeWithFiles()">
-          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
-          <span>Compartilhar no WhatsApp com Fotos/Vídeos</span>
+        <!-- 1. Enviar Relatório Completo com Fotos e Vídeos (Documento Interativo) -->
+        <button type="button" id="btnShareReportDoc" class="btn-share-whatsapp-full" style="font-size: 0.96rem; padding: 13px 16px; justify-content: center; box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35); background: #047857;" onclick="executeShareReportDocument()">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Compartilhar Relatório com Fotos e Vídeos</span>
+        </button>
+
+        <!-- 2. Enviar Fotos Direto no WhatsApp -->
+        <button type="button" id="btnShareDirectPhotos" class="btn-share-whatsapp-full" style="font-size: 0.92rem; padding: 11px 14px; justify-content: center; background: #065f46;" onclick="executeShareDirectPhotos()">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          <span>Enviar Fotos Direto no WhatsApp</span>
         </button>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <!-- 2. Compartilhar em Outros Aplicativos -->
-          <button type="button" class="btn-secondary" style="padding: 10px; font-size: 0.82rem; justify-content: center; display: inline-flex; align-items: center; gap: 6px;" onclick="executeShareOtherApps()">
-            <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            <span>Outros Apps</span>
+          <!-- 3. Enviar Resumo em Texto -->
+          <button type="button" class="btn-secondary" style="padding: 10px; font-size: 0.82rem; justify-content: center; display: inline-flex; align-items: center; gap: 6px;" onclick="executeShareTextOnly()">
+            <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>Texto WhatsApp</span>
           </button>
 
-          <!-- 3. Baixar Fotos e Vídeos -->
+          <!-- 4. Baixar Fotos e Relatório -->
           <button type="button" class="btn-secondary" style="padding: 10px; font-size: 0.82rem; justify-content: center; display: inline-flex; align-items: center; gap: 6px;" onclick="downloadSelectedShareMedias()">
             <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>Salvar Fotos</span>
+            <span>Baixar Arquivos</span>
           </button>
         </div>
 
@@ -559,16 +565,16 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- SCRIPTS -->
-  <script src="js/db.js?v=1.5.5"></script>
-  <script src="js/auth.js?v=1.5.5"></script>
-  <script src="js/app.js?v=1.5.5"></script>
-  <script src="js/update.js?v=1.5.5"></script>
+  <script src="js/db.js?v=1.5.6"></script>
+  <script src="js/auth.js?v=1.5.6"></script>
+  <script src="js/app.js?v=1.5.6"></script>
+  <script src="js/update.js?v=1.5.6"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js?v=1.5.5')
+        navigator.serviceWorker.register('sw.js?v=1.5.6')
           .then((reg) => {
             reg.update();
             console.log('Service Worker registrado:', reg.scope);

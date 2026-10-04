@@ -1242,77 +1242,308 @@ async function copyReportTextDirectly() {
   }
 }
 
-async function executeShareNativeWithFiles() {
+// ==========================================
+// GERADOR DO RELATÓRIO DIGITAL INTERATIVO (COM FOTOS E VÍDEOS POR ITEM)
+// ==========================================
+async function generateInteractiveChecklistReportHtml(chk, medias) {
+  const plateHorse = (chk.plateHorse || 'CAMINHAO').toUpperCase();
+  const plateTrailer1 = (chk.plateTrailer1 || '').toUpperCase();
+  const plateTrailer2 = (chk.plateTrailer2 || '').toUpperCase();
+  const driverName = chk.driverName || 'Não informado';
+  const km = chk.currentKm || '---';
+  const dateTime = chk.inspectionDateTime || getFormattedCurrentDateTime();
+  const location = chk.locationText || 'Não informada';
+  const status = chk.status === 'concluido' ? 'CONCLUÍDO' : 'PENDENTE';
+  const statusColor = chk.status === 'concluido' ? '#22c55e' : '#f59e0b';
+
+  // Helper para converter Blob em Base64 DataURL
+  const blobToDataUrl = (blob) => new Promise((resolve) => {
+    if (!blob) { resolve(''); return; }
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result || '');
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(blob);
+  });
+
+  // Prepara as mídias selecionadas com seus DataURLs
+  const mediaDataList = [];
+  for (const m of (medias || [])) {
+    if (m.blob && m.includeInShare !== false) {
+      try {
+        const dataUrl = await blobToDataUrl(m.blob);
+        mediaDataList.push({ ...m, dataUrl });
+      } catch (err) {
+        console.warn('Erro ao processar mídia:', err);
+      }
+    }
+  }
+
+  // Gera os blocos visuais de cada item
+  const itemsHtml = (chk.items || []).map(item => {
+    let badgeText = 'NÃO VERIFICADO';
+    let badgeColor = '#64748b';
+    let icon = '⚪';
+    if (item.status === 'ok') {
+      badgeText = 'CONFORME / OK';
+      badgeColor = '#22c55e';
+      icon = '🟢';
+    } else if (item.status === 'warn') {
+      badgeText = 'ATENÇÃO / ALERTA';
+      badgeColor = '#f59e0b';
+      icon = '🟡';
+    } else if (item.status === 'danger') {
+      badgeText = 'DEFEITO / NÃO CONFORME';
+      badgeColor = '#ef4444';
+      icon = '🔴';
+    }
+
+    const itemMedias = mediaDataList.filter(m => m.itemId === item.id);
+    const mediasHtml = itemMedias.length > 0 ? `
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 10px;">
+        ${itemMedias.map((m, idx) => `
+          <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; overflow: hidden; padding: 6px;">
+            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px; font-weight: 700;">
+              ${m.type === 'photo' ? '📷 FOTO' : '🎥 VÍDEO'} ${idx + 1} ${m.resolved ? '• RESOLVIDO' : '• PENDENTE'}
+            </div>
+            ${m.type === 'photo'
+              ? `<a href="${m.dataUrl}" target="_blank" style="display: block; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: #000;">
+                   <img src="${m.dataUrl}" alt="Foto ${escapeHtml(item.title)}" style="width: 100%; height: 100%; object-fit: cover; cursor: pointer; display: block;">
+                 </a>`
+              : `<video src="${m.dataUrl}" controls playsinline style="width: 100%; max-height: 120px; border-radius: 6px; background: #000;"></video>`
+            }
+            ${m.notes ? `<div style="font-size: 11px; color: #cbd5e1; margin-top: 4px; line-height: 1.2;">↳ ${escapeHtml(m.notes)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    return `
+      <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div style="font-weight: 800; font-size: 15px; color: #f8fafc; display: flex; align-items: center; gap: 6px;">
+            <span>${icon}</span>
+            <span>${escapeHtml(item.title)}</span>
+          </div>
+          <span style="background: ${badgeColor}; color: #ffffff; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 800;">
+            ${badgeText}
+          </span>
+        </div>
+        ${item.note ? `<div style="margin-top: 8px; padding: 8px 10px; background: rgba(0,0,0,0.3); border-left: 3px solid ${badgeColor}; border-radius: 4px; font-size: 13px; color: #cbd5e1;"><strong>Obs:</strong> ${escapeHtml(item.note)}</div>` : ''}
+        ${mediasHtml}
+      </div>
+    `;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vistoria Veicular - ${plateHorse}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0b1120; color: #f8fafc; margin: 0; padding: 14px; line-height: 1.4; }
+    .container { max-width: 680px; margin: 0 auto; background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .header { border-bottom: 2px solid #334155; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .title { font-size: 18px; font-weight: 900; color: #38bdf8; margin: 0; }
+    .status-pill { background: ${statusColor}; color: #fff; padding: 4px 14px; border-radius: 20px; font-weight: 900; font-size: 12px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #1e293b; border-radius: 10px; padding: 12px; margin-bottom: 18px; font-size: 13px; }
+    .info-label { color: #94a3b8; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 2px; }
+    .info-val { color: #f8fafc; font-weight: 800; }
+    .section-title { font-size: 15px; font-weight: 800; color: #f8fafc; margin: 16px 0 10px 0; border-left: 4px solid #38bdf8; padding-left: 8px; }
+    .footer { text-align: center; font-size: 12px; color: #64748b; margin-top: 20px; padding-top: 12px; border-top: 1px solid #1e293b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <div class="title">🚛 CHECKLIST TRUCK PRO</div>
+        <div style="font-size: 12px; color: #94a3b8;">Relatório Completo de Vistoria</div>
+      </div>
+      <div class="status-pill">${status}</div>
+    </div>
+
+    <div class="info-grid">
+      <div>
+        <div class="info-label">Cavalo Mecânico</div>
+        <div class="info-val">${plateHorse}</div>
+      </div>
+      <div>
+        <div class="info-label">Tipo</div>
+        <div class="info-val">${escapeHtml(chk.vehicleType || 'Bitrem 9 Eixos')}</div>
+      </div>
+      <div>
+        <div class="info-label">Semirreboque 1</div>
+        <div class="info-val">${plateTrailer1 || 'NÃO INFORMADA'}</div>
+      </div>
+      <div>
+        <div class="info-label">Semirreboque 2</div>
+        <div class="info-val">${plateTrailer2 || '---'}</div>
+      </div>
+      <div>
+        <div class="info-label">Motorista</div>
+        <div class="info-val">${escapeHtml(driverName)}</div>
+      </div>
+      <div>
+        <div class="info-label">KM / Horímetro</div>
+        <div class="info-val">${km}</div>
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <div class="info-label">Data e Hora</div>
+        <div class="info-val">${dateTime}</div>
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <div class="info-label">Localização</div>
+        <div class="info-val">${escapeHtml(location)} ${chk.latitude && chk.longitude ? `(<a href="https://www.google.com/maps?q=${chk.latitude},${chk.longitude}" target="_blank" style="color: #38bdf8; text-decoration: underline;">Abrir no Google Maps</a>)` : ''}</div>
+      </div>
+    </div>
+
+    <div class="section-title">ITENS VISTORIADOS E FOTOS/VÍDEOS</div>
+    ${itemsHtml}
+
+    <div class="footer">
+      Gerado via Checklist Truck Pro • Toque nas fotos para ampliar e nos vídeos para reproduzir
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// 1. Compartilhar Relatório Completo com Fotos e Vídeos (Documento Interativo)
+async function executeShareReportDocument() {
   const chk = currentModalShareData.checklist;
   if (!chk) return;
 
-  const medias = currentModalShareData.medias || [];
-  const selectedMedias = medias.filter(m => m.includeInShare !== false);
-  const filesToShare = prepareMediaFiles(selectedMedias, chk.plateHorse);
-  const text = currentModalShareData.text;
-  const shareTitle = `Vistoria Veicular - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
+  showToast('Gerando relatório com fotos e vídeos...', 'info');
 
-  // Copia o relatório de forma silenciosa para garantir que o texto esteja pronto caso o usuário queira colar
+  const htmlContent = await generateInteractiveChecklistReportHtml(chk, currentModalShareData.medias);
+  const cleanPlate = (chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
+  const filename = `Vistoria_${cleanPlate}_${Date.now()}.html`;
+  const reportFile = new File([htmlContent], filename, { type: 'text/html' });
+
+  const text = currentModalShareData.text;
+  const shareTitle = `Relatório de Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
+
+  // Copia o resumo em texto para o clipboard
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
     }
   } catch (e) {}
 
-  // 1. Tenta compartilhamento nativo direto com Arquivos e Texto
-  if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
+  // Tenta compartilhar o arquivo do relatório no WhatsApp/Telegram/Email
+  if (navigator.canShare && navigator.canShare({ files: [reportFile] })) {
     try {
-      showToast('Abrindo WhatsApp / Aplicativo com fotos e vídeos...', 'info');
       await navigator.share({
         title: shareTitle,
-        text: text,
-        files: filesToShare
+        text: `Relatório de Vistoria Veicular - Placa ${chk.plateHorse}. Abra o arquivo anexo para ver todas as fotos e vídeos!`,
+        files: [reportFile]
       });
-      showToast('Vistoria e mídias compartilhadas com sucesso!', 'success');
+      showToast('Relatório completo compartilhado com sucesso!', 'success');
       closeSharePreviewModal();
       return;
     } catch (err) {
       if (err.name === 'AbortError') return;
-      console.warn('[Share] Erro compartilhando arquivos com texto, tentando apenas arquivos:', err);
-
-      // 2. Tenta compartilhar apenas os arquivos (o texto já está no clipboard)
-      try {
-        await navigator.share({
-          title: shareTitle,
-          files: filesToShare
-        });
-        showToast('Fotos/Vídeos enviados! O texto do relatório foi copiado.', 'success');
-        closeSharePreviewModal();
-        return;
-      } catch (err2) {
-        if (err2.name === 'AbortError') return;
-      }
+      console.warn('Falha no compartilhamento de documento:', err);
     }
   }
 
-  // 3. Tenta compartilhar texto nativo se não houver arquivos ou se falhar
-  if (navigator.share) {
+  // Fallback: Baixa o relatório para o celular e abre o WhatsApp com o texto
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  showToast('Relatório salvo no seu aparelho! Abrindo WhatsApp...', 'success');
+  closeSharePreviewModal();
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const whatsappUrl = isMobile 
+    ? `whatsapp://send?text=${encodeURIComponent(text)}` 
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+  setTimeout(() => {
+    window.location.href = whatsappUrl;
+  }, 100);
+}
+
+// 2. Compartilhar Fotos Diretamente na Conversa do WhatsApp (Imagens)
+async function executeShareDirectPhotos() {
+  const chk = currentModalShareData.checklist;
+  if (!chk) return;
+
+  const medias = (currentModalShareData.medias || []).filter(m => m.includeInShare !== false);
+  const photosOnly = medias.filter(m => m.type === 'photo');
+
+  if (photosOnly.length === 0) {
+    showToast('Nenhuma foto registrada para envio direto.', 'warning');
+    return;
+  }
+
+  const cleanPlate = (chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
+  const photoFiles = [];
+
+  for (let i = 0; i < photosOnly.length; i++) {
+    const m = photosOnly[i];
+    if (m.blob) {
+      const filename = `FOTO_${cleanPlate}_${m.itemId || 'item'}_${i + 1}.jpg`;
+      const f = new File([m.blob], filename, { type: 'image/jpeg' });
+      photoFiles.push(f);
+    }
+  }
+
+  const text = currentModalShareData.text;
+  const shareTitle = `Fotos da Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
+
+  // Copia o texto para a área de transferência
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    }
+  } catch (e) {}
+
+  if (photoFiles.length > 0 && navigator.canShare && navigator.canShare({ files: photoFiles })) {
     try {
+      showToast('Abrindo WhatsApp com as fotos anexadas...', 'info');
       await navigator.share({
         title: shareTitle,
-        text: text
+        files: photoFiles
       });
-      showToast('Relatório compartilhado com sucesso!', 'success');
+      showToast('Fotos enviadas com sucesso!', 'success');
       closeSharePreviewModal();
       return;
-    } catch (err3) {
-      if (err3.name === 'AbortError') return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('Erro ao compartilhar fotos diretamente:', err);
     }
   }
 
-  // 4. Fallback direto para o WhatsApp
+  // Fallback: Baixa as fotos e abre WhatsApp
+  await downloadSelectedShareMedias();
+  executeShareTextOnly();
+}
+
+// 3. Compartilhar Resumo em Texto no WhatsApp
+function executeShareTextOnly() {
+  const text = currentModalShareData.text || '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    }
+  } catch (e) {}
+
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const encodedText = encodeURIComponent(text);
   const whatsappUrl = isMobile 
     ? `whatsapp://send?text=${encodedText}` 
     : `https://api.whatsapp.com/send?text=${encodedText}`;
 
-  showToast('Abrindo WhatsApp com o relatório copiado...', 'success');
+  showToast('Abrindo WhatsApp...', 'success');
   closeSharePreviewModal();
 
   setTimeout(() => {
@@ -1320,27 +1551,19 @@ async function executeShareNativeWithFiles() {
   }, 100);
 }
 
-async function executeShareOtherApps() {
-  await executeShareNativeWithFiles();
-}
-
+// 4. Baixar Fotos, Vídeos e Relatório no Celular
 async function downloadSelectedShareMedias() {
   const chk = currentModalShareData.checklist;
   const medias = (currentModalShareData.medias || []).filter(m => m.includeInShare !== false);
-  if (medias.length === 0) {
-    showToast('Nenhuma foto ou vídeo selecionada para salvar.', 'warning');
-    return;
-  }
+  const cleanPlate = (chk?.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
 
-  const plate = (chk?.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
   let count = 0;
-
   for (let i = 0; i < medias.length; i++) {
     const m = medias[i];
     if (!m.blob) continue;
     const isPhoto = (m.type === 'photo');
     const ext = isPhoto ? 'jpg' : 'mp4';
-    const filename = m.name || `VISTORIA_${plate}_${m.itemId || 'item'}_${i + 1}.${ext}`;
+    const filename = m.name || `VISTORIA_${cleanPlate}_${m.itemId || 'item'}_${i + 1}.${ext}`;
     
     const url = URL.createObjectURL(m.blob);
     const a = document.createElement('a');
@@ -1353,7 +1576,21 @@ async function downloadSelectedShareMedias() {
     count++;
   }
 
-  showToast(`${count} foto(s)/vídeo(s) baixada(s) para a galeria do aparelho!`, 'success');
+  // Baixa também o relatório digital em HTML
+  if (chk) {
+    const htmlContent = await generateInteractiveChecklistReportHtml(chk, medias);
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Relatorio_Vistoria_${cleanPlate}_${Date.now()}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  showToast(`${count} arquivo(s) + Relatório baixados para o aparelho!`, 'success');
 }
 
 // Mantém compatibilidade com chamadas anteriores
@@ -1574,7 +1811,10 @@ window.closeSharePreviewModal = closeSharePreviewModal;
 window.toggleModalMediaItem = toggleModalMediaItem;
 window.toggleAllModalMediaSelection = toggleAllModalMediaSelection;
 window.copyReportTextDirectly = copyReportTextDirectly;
-window.executeShareNativeWithFiles = executeShareNativeWithFiles;
-window.executeShareOtherApps = executeShareOtherApps;
+window.executeShareReportDocument = executeShareReportDocument;
+window.executeShareDirectPhotos = executeShareDirectPhotos;
+window.executeShareTextOnly = executeShareTextOnly;
+window.executeShareNativeWithFiles = executeShareReportDocument;
+window.executeShareOtherApps = executeShareReportDocument;
 window.downloadSelectedShareMedias = downloadSelectedShareMedias;
 window.shareReportViaWhatsApp = shareReportViaWhatsApp;
