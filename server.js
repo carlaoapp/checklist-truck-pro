@@ -36,6 +36,24 @@ function getLocalIpAddresses() {
 const server = http.createServer((req, res) => {
   // Remove query strings
   let reqPath = decodeURI(req.url.split('?')[0]);
+
+  // Endpoint de Ping/Health para Anti-Sleep do Render e clientes
+  if (reqPath === '/ping' || reqPath === '/api/ping' || reqPath === '/health') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    });
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'checklist-truck-pro',
+      timestamp: Date.now(),
+      uptime: Math.floor(process.uptime())
+    }));
+    return;
+  }
+
   if (reqPath === '/' || reqPath === '') {
     reqPath = '/index.html';
   }
@@ -74,6 +92,43 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// --- Anti-Sleep / Keep-Alive para Render (Evita hibernação a cada 7 segundos) ---
+const RENDER_PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || 'https://checklist-truck-pro.onrender.com';
+
+function initRenderKeepAlive() {
+  const INTERVAL_MS = 7 * 1000; // 7 segundos (desperta continuamente para evitar suspensão)
+  console.log(`[Keep-Alive] Robô anti-sleep ativado. Alvo: ${RENDER_PUBLIC_URL}/api/ping (a cada 7 segundos)`);
+
+  const executePing = async () => {
+    try {
+      const pingUrl = `${RENDER_PUBLIC_URL.replace(/\/$/, '')}/api/ping?t=${Date.now()}`;
+      if (typeof fetch === 'function') {
+        const response = await fetch(pingUrl, {
+          headers: { 'User-Agent': 'RenderKeepAlive/1.0', 'Cache-Control': 'no-cache' }
+        });
+        if (Math.random() < 0.05) {
+          console.log(`[Keep-Alive] Auto-ping enviado -> HTTP ${response.status} (${new Date().toLocaleTimeString('pt-BR')})`);
+        }
+      } else {
+        const client = pingUrl.startsWith('https') ? require('https') : require('http');
+        client.get(pingUrl, (res) => {
+          if (Math.random() < 0.05) {
+            console.log(`[Keep-Alive] Auto-ping enviado -> HTTP ${res.statusCode} (${new Date().toLocaleTimeString('pt-BR')})`);
+          }
+        }).on('error', () => {});
+      }
+    } catch (err) {
+      // Ignora falhas temporárias de conexão
+    }
+  };
+
+  // Ping inicial rápido após ligar o servidor
+  setTimeout(executePing, 2000);
+
+  // Ping contínuo a cada 7 segundos
+  setInterval(executePing, INTERVAL_MS);
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log('================================================================');
   console.log('  🚛 CHECKLIST TRUCK PRO - SERVIDOR INICIADO');
@@ -89,4 +144,7 @@ server.listen(PORT, '0.0.0.0', () => {
   }
   console.log('================================================================');
   console.log('  Pressione Ctrl+C para encerrar.');
+
+  // Inicia o keep-alive para não deixar o Render dormir
+  initRenderKeepAlive();
 });

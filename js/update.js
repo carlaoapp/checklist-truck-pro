@@ -13,7 +13,7 @@
  * version.json e o CACHE_NAME em sw.js para o mesmo número.
  */
 
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.5.2';
 
 const UPDATE_CHECK_INTERVAL_MS = 60000;
 let updatePromptShownFor = null;

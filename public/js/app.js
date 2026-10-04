@@ -30,7 +30,7 @@ const DEFAULT_INSPECTION_ITEMS = [
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
   initTheme();
-  setupOnlineStatus();
+  startClientKeepAlive();
   setupEventListeners();
 
   // Inicializa sistema de autenticação e isolamento de motorista
@@ -45,6 +45,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Transição suave da tela de entrada após 1.2s
   setTimeout(dismissSplash, 1200);
 });
+
+// ==========================================
+// ANTI-SLEEP / KEEP-ALIVE RENDER (7 SEGUNDOS)
+// Mantém o servidor Render sempre acordado sem delay de abertura
+// ==========================================
+function startClientKeepAlive() {
+  const pingServer = () => {
+    if (!navigator.onLine) return;
+
+    // Ping na rota interna (se hospedado no Render)
+    fetch('/api/ping?t=' + Date.now(), { cache: 'no-store' }).catch(() => {});
+
+    // Se estiver no GitHub Pages ou ambiente local, pinga a URL de produção no Render
+    if (window.location.hostname.includes('github.io') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      fetch('https://checklist-truck-pro.onrender.com/api/ping?t=' + Date.now(), { mode: 'no-cors', cache: 'no-store' }).catch(() => {});
+    }
+  };
+
+  // Disparo inicial rápido (1s após carregar)
+  setTimeout(pingServer, 1000);
+
+  // Intervalo contínuo a cada 7 segundos
+  setInterval(pingServer, 7000);
+}
 
 function dismissSplash() {
   const splash = document.getElementById('splashScreen');
