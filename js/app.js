@@ -1091,6 +1091,153 @@ async function generateChecklistReportText(checklistId) {
   return formatChecklistReportText(chk || activeChecklist, medias);
 }
 
+// ==========================================
+// OTIMIZAÇÃO E COMPARTILHAMENTO DIRETO DE FOTOS/VÍDEOS COM TEXTO NO WHATSAPP
+// ==========================================
+
+// Comprime foto para envio leve e ultra-rápido no WhatsApp (evita estourar limite do Android)
+function compressImageForShare(blob, maxWidth = 1280, maxHeight = 1280, quality = 0.8) {
+  return new Promise((resolve) => {
+    if (!blob) { resolve(null); return; }
+    try {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((compressedBlob) => {
+          resolve(compressedBlob || blob);
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      };
+      img.src = url;
+    } catch (e) {
+      resolve(blob);
+    }
+  });
+}
+
+// Extrai quadro representativo de vídeo para envio de imagem no WhatsApp
+function extractVideoFrameForShare(blob, maxWidth = 1280, maxHeight = 1280, quality = 0.8) {
+  return new Promise((resolve) => {
+    if (!blob) { resolve(null); return; }
+    try {
+      const url = URL.createObjectURL(blob);
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+      video.src = url;
+      video.currentTime = 0.5;
+
+      const timeout = setTimeout(() => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      }, 4000);
+
+      video.onloadeddata = () => {
+        video.currentTime = 0.5;
+      };
+
+      video.onseeked = () => {
+        clearTimeout(timeout);
+        try {
+          let width = video.videoWidth || 640;
+          let height = video.videoHeight || 480;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, width, height);
+
+          canvas.toBlob((frameBlob) => {
+            URL.revokeObjectURL(url);
+            resolve(frameBlob);
+          }, 'image/jpeg', quality);
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        }
+      };
+
+      video.onerror = () => {
+        clearTimeout(timeout);
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+    } catch (err) {
+      resolve(null);
+    }
+  });
+}
+
+// Prepara arquivos de imagem otimizados para compartilhamento nativo no WhatsApp
+async function prepareOptimizedShareFiles(chk, medias) {
+  const files = [];
+  const cleanPlate = (chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
+  const selectedMedias = (medias || []).filter(m => m.includeInShare !== false && m.blob);
+
+  for (let i = 0; i < selectedMedias.length; i++) {
+    const m = selectedMedias[i];
+    const parentItem = (chk.items || []).find(it => it.id === m.itemId);
+    const itemTag = parentItem ? parentItem.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 15) : `Item_${i + 1}`;
+    
+    try {
+      let finalBlob = null;
+      let filename = '';
+
+      if (m.type === 'photo') {
+        finalBlob = await compressImageForShare(m.blob);
+        filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.jpg`;
+      } else if (m.type === 'video') {
+        finalBlob = await extractVideoFrameForShare(m.blob);
+        filename = `VISTORIA_${cleanPlate}_${itemTag}_Video_Frame_${i + 1}.jpg`;
+      }
+
+      if (finalBlob) {
+        const file = new File([finalBlob], filename, { type: 'image/jpeg', lastModified: Date.now() });
+        files.push(file);
+      }
+    } catch (err) {
+      console.warn('Erro ao otimizar mídia para compartilhamento:', err);
+    }
+  }
+
+  return files;
+}
+
 function prepareMediaFiles(medias, plate) {
   const files = [];
   const cleanPlate = (plate || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
@@ -1242,10 +1389,7 @@ async function copyReportTextDirectly() {
   }
 }
 
-// ==========================================
-// COMPARTILHAMENTO DIRETO DE FOTOS/VÍDEOS COM TEXTO NO WHATSAPP
-// ==========================================
-
+// Compartilhamento direto das mídias com o checklist abaixo no WhatsApp
 async function executeShareReportDocument() {
   const chk = currentModalShareData.checklist;
   if (!chk) return;
@@ -1255,42 +1399,44 @@ async function executeShareReportDocument() {
   if (btn) {
     originalBtnHtml = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = `<span>⏳ Preparando fotos e vídeos...</span>`;
+    btn.innerHTML = `<span>⏳ Processando fotos e vídeos...</span>`;
   }
 
-  showToast('Preparando mídias e informações da vistoria...', 'info');
+  showToast('Preparando fotos, vídeos e informações...', 'info');
 
   try {
     const text = currentModalShareData.text || formatChecklistReportText(chk, currentModalShareData.medias);
-    const mediaFiles = prepareMediaFiles(currentModalShareData.medias, chk.plateHorse);
     const shareTitle = `Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
 
-    // Copia o resumo em texto para o clipboard para garantir que o usuário tenha o texto à mão
+    // Copia o resumo em texto para o clipboard para garantia
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
       }
     } catch (e) {}
 
-    // 1. Se houver fotos/vídeos e o navegador suportar compartilhamento de arquivos via Web Share API
-    if (mediaFiles.length > 0 && navigator.canShare && navigator.canShare({ files: mediaFiles })) {
+    // Prepara as fotos e quadros de vídeos em formato de imagem leve compatível com o WhatsApp
+    const shareFiles = await prepareOptimizedShareFiles(chk, currentModalShareData.medias);
+
+    // 1. Tenta compartilhar fotos/vídeos com o texto do checklist via WebShare nativo
+    if (shareFiles.length > 0 && navigator.canShare && navigator.canShare({ files: shareFiles })) {
       try {
         await navigator.share({
           title: shareTitle,
           text: text,
-          files: mediaFiles
+          files: shareFiles
         });
         showToast('Fotos, vídeos e checklist compartilhados com sucesso!', 'success');
         closeSharePreviewModal();
         return;
       } catch (err) {
         if (err.name === 'AbortError') return; // Cancelado pelo usuário
-        console.warn('Falha no WebShare com arquivos:', err);
+        console.warn('Falha no WebShare com arquivos de imagem:', err);
       }
     }
 
-    // 2. Se não houver fotos/vídeos mas suportar WebShare de texto
-    if (mediaFiles.length === 0 && navigator.canShare && navigator.canShare({ title: shareTitle, text: text })) {
+    // 2. Se não houver mídias ou WebShare com arquivos falhar, tenta compartilhar só o texto
+    if (navigator.canShare && navigator.canShare({ title: shareTitle, text: text })) {
       try {
         await navigator.share({
           title: shareTitle,
@@ -1305,38 +1451,22 @@ async function executeShareReportDocument() {
       }
     }
 
-    // 3. Fallback (ex: Desktop ou navegadores sem suporte a WebShare de arquivos):
-    // Se tiver fotos/vídeos, baixa os arquivos no aparelho
-    if (mediaFiles.length > 0) {
-      for (let i = 0; i < mediaFiles.length; i++) {
-        const file = mediaFiles[i];
-        const url = URL.createObjectURL(file);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-      }
-      showToast(`${mediaFiles.length} mídia(s) baixada(s)! Abrindo WhatsApp...`, 'info');
-    }
-
-    // Abre o WhatsApp com o texto completo
+    // 3. Fallback: Abre o WhatsApp diretamente com o texto do relatório (sem downloads indesejados)
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const encodedText = encodeURIComponent(text);
     const whatsappUrl = isMobile 
       ? `whatsapp://send?text=${encodedText}` 
       : `https://api.whatsapp.com/send?text=${encodedText}`;
 
+    showToast('Abrindo WhatsApp com o relatório...', 'success');
     closeSharePreviewModal();
     setTimeout(() => {
       window.location.href = whatsappUrl;
-    }, 200);
+    }, 150);
 
   } catch (err) {
     console.error('Erro ao compartilhar:', err);
-    showToast('Erro ao compartilhar. Abrindo WhatsApp...', 'warning');
+    showToast('Abrindo WhatsApp...', 'info');
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const text = currentModalShareData.text || '';
     const whatsappUrl = isMobile 
