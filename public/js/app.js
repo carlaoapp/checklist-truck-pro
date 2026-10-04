@@ -1243,226 +1243,9 @@ async function copyReportTextDirectly() {
 }
 
 // ==========================================
-// GERADOR DO RELATÓRIO PDF (COM FOTOS E VÍDEOS EMBUTIDOS POR ITEM)
+// COMPARTILHAMENTO DIRETO DE FOTOS/VÍDEOS COM TEXTO NO WHATSAPP
 // ==========================================
 
-// Helper para extrair thumbnail de vídeo
-function extractVideoThumbnail(blob) {
-  return new Promise((resolve) => {
-    if (!blob) { resolve(''); return; }
-    try {
-      const url = URL.createObjectURL(blob);
-      const video = document.createElement('video');
-      video.muted = true;
-      video.playsInline = true;
-      video.crossOrigin = 'anonymous';
-      video.src = url;
-      video.currentTime = 0.5;
-
-      const timeout = setTimeout(() => {
-        URL.revokeObjectURL(url);
-        resolve('');
-      }, 3000);
-
-      video.onloadeddata = () => {
-        video.currentTime = 0.5;
-      };
-
-      video.onseeked = () => {
-        clearTimeout(timeout);
-        try {
-          const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth || 320;
-          canvas.height = video.videoHeight || 240;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-          URL.revokeObjectURL(url);
-          resolve(dataUrl);
-        } catch (e) {
-          URL.revokeObjectURL(url);
-          resolve('');
-        }
-      };
-
-      video.onerror = () => {
-        clearTimeout(timeout);
-        URL.revokeObjectURL(url);
-        resolve('');
-      };
-    } catch (err) {
-      resolve('');
-    }
-  });
-}
-
-// Constrói o DOM do relatório para impressão / conversão em PDF
-async function generatePdfReportElement(chk, medias) {
-  const plateHorse = (chk.plateHorse || 'CAMINHAO').toUpperCase();
-  const plateTrailer1 = (chk.plateTrailer1 || '').toUpperCase();
-  const plateTrailer2 = (chk.plateTrailer2 || '').toUpperCase();
-  const driverName = chk.driverName || 'Não informado';
-  const km = chk.currentKm || '---';
-  const dateTime = chk.inspectionDateTime || getFormattedCurrentDateTime();
-  const location = chk.locationText || 'Não informada';
-  const status = chk.status === 'concluido' ? 'CONCLUÍDO' : 'PENDENTE';
-  const statusBg = chk.status === 'concluido' ? '#16a34a' : '#d97706';
-
-  // Helper para converter Blob em Base64 DataURL
-  const blobToDataUrl = (blob) => new Promise((resolve) => {
-    if (!blob) { resolve(''); return; }
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result || '');
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(blob);
-  });
-
-  // Prepara as mídias selecionadas com seus DataURLs
-  const mediaDataList = [];
-  for (const m of (medias || [])) {
-    if (m.blob && m.includeInShare !== false) {
-      try {
-        let dataUrl = '';
-        if (m.type === 'photo') {
-          dataUrl = await blobToDataUrl(m.blob);
-        } else if (m.type === 'video') {
-          dataUrl = await extractVideoThumbnail(m.blob);
-          if (!dataUrl) {
-            dataUrl = await blobToDataUrl(m.blob);
-          }
-        }
-        if (dataUrl) {
-          mediaDataList.push({ ...m, dataUrl });
-        }
-      } catch (err) {
-        console.warn('Erro ao processar mídia para PDF:', err);
-      }
-    }
-  }
-
-  // Monta os itens do checklist
-  const itemsHtml = (chk.items || []).map((item, idx) => {
-    let badgeText = 'NÃO VERIFICADO';
-    let badgeBg = '#64748b';
-    let icon = '⚪';
-    if (item.status === 'ok') {
-      badgeText = 'CONFORME / OK';
-      badgeBg = '#16a34a';
-      icon = '🟢';
-    } else if (item.status === 'warn') {
-      badgeText = 'ATENÇÃO / ALERTA';
-      badgeBg = '#d97706';
-      icon = '🟡';
-    } else if (item.status === 'danger') {
-      badgeText = 'DEFEITO / NÃO CONFORME';
-      badgeBg = '#dc2626';
-      icon = '🔴';
-    }
-
-    const itemMedias = mediaDataList.filter(m => m.itemId === item.id);
-    const mediasHtml = itemMedias.length > 0 ? `
-      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
-        ${itemMedias.map((m, mIdx) => `
-          <div style="width: 140px; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #f8fafc; padding: 4px; box-sizing: border-box;">
-            <div style="font-size: 9px; font-weight: 800; color: #475569; margin-bottom: 2px;">
-              ${m.type === 'photo' ? '📷 FOTO' : '🎥 VÍDEO (FRAME)'} ${mIdx + 1}
-            </div>
-            <img src="${m.dataUrl}" alt="Mídia ${mIdx + 1}" style="width: 100%; height: 100px; object-fit: cover; border-radius: 4px; display: block; background: #e2e8f0;">
-            ${m.notes ? `<div style="font-size: 9px; color: #334155; margin-top: 2px; line-height: 1.2;">${escapeHtml(m.notes)}</div>` : ''}
-          </div>
-        `).join('')}
-      </div>
-    ` : '';
-
-    return `
-      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; page-break-inside: avoid;">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-          <div style="font-weight: 800; font-size: 13px; color: #0f172a; display: flex; align-items: center; gap: 5px;">
-            <span>${icon}</span>
-            <span>${idx + 1}. ${escapeHtml(item.title)}</span>
-          </div>
-          <span style="background: ${badgeBg}; color: #ffffff; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 800; white-space: nowrap;">
-            ${badgeText}
-          </span>
-        </div>
-        ${item.note ? `<div style="margin-top: 6px; padding: 6px 8px; background: #f1f5f9; border-left: 3px solid ${badgeBg}; border-radius: 4px; font-size: 11px; color: #334155;"><strong>Obs:</strong> ${escapeHtml(item.note)}</div>` : ''}
-        ${mediasHtml}
-      </div>
-    `;
-  }).join('');
-
-  const container = document.createElement('div');
-  container.style.width = '750px';
-  container.style.padding = '20px';
-  container.style.background = '#ffffff';
-  container.style.color = '#0f172a';
-  container.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-  container.style.boxSizing = 'border-box';
-
-  container.innerHTML = `
-    <!-- Header -->
-    <div style="border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
-      <div>
-        <div style="font-size: 20px; font-weight: 900; color: #0369a1; letter-spacing: -0.5px;">🚛 CHECKLIST TRUCK PRO</div>
-        <div style="font-size: 12px; color: #64748b; font-weight: 600;">Relatório Oficial de Vistoria Veicular</div>
-      </div>
-      <div style="background: ${statusBg}; color: #ffffff; padding: 5px 14px; border-radius: 20px; font-weight: 900; font-size: 12px; letter-spacing: 0.5px;">
-        ${status}
-      </div>
-    </div>
-
-    <!-- Informações do Veículo e Vistoria -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 11px;">
-      <div>
-        <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px;">Cavalo Mecânico</div>
-        <div style="color: #0f172a; font-weight: 900; font-size: 13px;">${plateHorse}</div>
-      </div>
-      <div>
-        <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px;">Tipo de Veículo</div>
-        <div style="color: #0f172a; font-weight: 800;">${escapeHtml(chk.vehicleType || 'Bitrem 9 Eixos')}</div>
-      </div>
-      <div>
-        <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px;">Motorista</div>
-        <div style="color: #0f172a; font-weight: 800;">${escapeHtml(driverName)}</div>
-      </div>
-      <div>
-        <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px;">Semirreboque 1</div>
-        <div style="color: #0f172a; font-weight: 800;">${plateTrailer1 || 'NÃO INFORMADA'}</div>
-      </div>
-      <div>
-        <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px;">Semirreboque 2</div>
-        <div style="color: #0f172a; font-weight: 800;">${plateTrailer2 || '---'}</div>
-      </div>
-      <div>
-        <div style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 9px;">KM / Horímetro</div>
-        <div style="color: #0f172a; font-weight: 800;">${km}</div>
-      </div>
-      <div style="grid-column: 1 / -1; border-top: 1px dashed #cbd5e1; padding-top: 6px; margin-top: 2px;">
-        <span style="color: #64748b; font-weight: 700;">Data/Hora:</span> <span style="font-weight: 800; color: #0f172a;">${dateTime}</span> &nbsp;|&nbsp; 
-        <span style="color: #64748b; font-weight: 700;">Local:</span> <span style="font-weight: 800; color: #0f172a;">${escapeHtml(location)}</span>
-      </div>
-    </div>
-
-    <!-- Título Itens -->
-    <div style="font-size: 13px; font-weight: 900; color: #0369a1; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 4px;">
-      Itens Inspecionados e Mídias Anexadas
-    </div>
-
-    <!-- Lista de Itens -->
-    <div>
-      ${itemsHtml}
-    </div>
-
-    <!-- Rodapé -->
-    <div style="text-align: center; font-size: 10px; color: #94a3b8; margin-top: 16px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
-      Documento gerado eletronicamente pelo Checklist Truck Pro • Vistoria realizada em campo
-    </div>
-  `;
-
-  return container;
-}
-
-// Compartilhar Relatório em PDF com Fotos e Vídeos Embutidos
 async function executeShareReportDocument() {
   const chk = currentModalShareData.checklist;
   if (!chk) return;
@@ -1472,104 +1255,90 @@ async function executeShareReportDocument() {
   if (btn) {
     originalBtnHtml = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = `<span>⏳ Gerando Relatório PDF...</span>`;
+    btn.innerHTML = `<span>⏳ Preparando fotos e vídeos...</span>`;
   }
 
-  showToast('Gerando documento PDF com fotos e vídeos...', 'info');
+  showToast('Preparando mídias e informações da vistoria...', 'info');
 
   try {
-    const cleanPlate = (chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
-    const filename = `Vistoria_${cleanPlate}_${Date.now()}.pdf`;
+    const text = currentModalShareData.text || formatChecklistReportText(chk, currentModalShareData.medias);
+    const mediaFiles = prepareMediaFiles(currentModalShareData.medias, chk.plateHorse);
+    const shareTitle = `Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
 
-    // 1. Gera o elemento DOM do relatório com imagens
-    const reportElement = await generatePdfReportElement(chk, currentModalShareData.medias);
-    
-    // Anexa temporariamente fora da tela visível para renderização
-    reportElement.style.position = 'fixed';
-    reportElement.style.top = '-9999px';
-    reportElement.style.left = '-9999px';
-    document.body.appendChild(reportElement);
-
-    // 2. Converte para PDF Blob usando html2pdf.js offline
-    const opt = {
-      margin: [8, 8, 8, 8],
-      filename: filename,
-      image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    let pdfBlob;
-    if (window.html2pdf) {
-      pdfBlob = await window.html2pdf().set(opt).from(reportElement).outputPdf('blob');
-    } else {
-      throw new Error('Biblioteca html2pdf não carregada');
-    }
-
-    // Remove elemento temporário
-    if (reportElement.parentNode) {
-      document.body.removeChild(reportElement);
-    }
-
-    const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf', lastModified: Date.now() });
-
-    const text = currentModalShareData.text;
-    const shareTitle = `Relatório de Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
-
-    // Copia o resumo em texto para o clipboard para facilitar caso o usuário queira colar
+    // Copia o resumo em texto para o clipboard para garantir que o usuário tenha o texto à mão
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(text);
       }
     } catch (e) {}
 
-    // 3. Tenta compartilhar via Web Share API nativa com o arquivo PDF
-    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+    // 1. Se houver fotos/vídeos e o navegador suportar compartilhamento de arquivos via Web Share API
+    if (mediaFiles.length > 0 && navigator.canShare && navigator.canShare({ files: mediaFiles })) {
       try {
         await navigator.share({
           title: shareTitle,
-          text: `Relatório de Vistoria Veicular - Placa ${chk.plateHorse || ''}. Confira o documento PDF com fotos e detalhes em anexo.`,
-          files: [pdfFile]
+          text: text,
+          files: mediaFiles
         });
-        showToast('Relatório PDF compartilhado com sucesso!', 'success');
+        showToast('Fotos, vídeos e checklist compartilhados com sucesso!', 'success');
         closeSharePreviewModal();
         return;
       } catch (err) {
-        if (err.name === 'AbortError') return; // Usuário cancelou o menu nativo
-        console.warn('Falha no WebShare nativo:', err);
+        if (err.name === 'AbortError') return; // Cancelado pelo usuário
+        console.warn('Falha no WebShare com arquivos:', err);
       }
     }
 
-    // 4. Fallback (ex: navegadores desktop ou sem suporte a WebShare de arquivos):
-    // Baixa o arquivo PDF gerado e abre o WhatsApp Web com o texto do checklist
-    const downloadUrl = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+    // 2. Se não houver fotos/vídeos mas suportar WebShare de texto
+    if (mediaFiles.length === 0 && navigator.canShare && navigator.canShare({ title: shareTitle, text: text })) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: text
+        });
+        showToast('Checklist compartilhado com sucesso!', 'success');
+        closeSharePreviewModal();
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        console.warn('Falha no WebShare de texto:', err);
+      }
+    }
 
-    showToast('Relatório PDF baixado! Abrindo WhatsApp...', 'success');
-    closeSharePreviewModal();
+    // 3. Fallback (ex: Desktop ou navegadores sem suporte a WebShare de arquivos):
+    // Se tiver fotos/vídeos, baixa os arquivos no aparelho
+    if (mediaFiles.length > 0) {
+      for (let i = 0; i < mediaFiles.length; i++) {
+        const file = mediaFiles[i];
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+      showToast(`${mediaFiles.length} mídia(s) baixada(s)! Abrindo WhatsApp...`, 'info');
+    }
 
+    // Abre o WhatsApp com o texto completo
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const encodedText = encodeURIComponent(text);
     const whatsappUrl = isMobile 
-      ? `whatsapp://send?text=${encodeURIComponent(text)}` 
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+      ? `whatsapp://send?text=${encodedText}` 
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
 
+    closeSharePreviewModal();
     setTimeout(() => {
       window.location.href = whatsappUrl;
     }, 200);
 
   } catch (err) {
-    console.error('Erro ao gerar/compartilhar PDF:', err);
-    showToast('Erro ao gerar relatório em PDF. Tentando compartilhamento alternativo...', 'warning');
-    
-    // Fallback de texto se html2pdf falhar
-    const text = currentModalShareData.text || '';
+    console.error('Erro ao compartilhar:', err);
+    showToast('Erro ao compartilhar. Abrindo WhatsApp...', 'warning');
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const text = currentModalShareData.text || '';
     const whatsappUrl = isMobile 
       ? `whatsapp://send?text=${encodeURIComponent(text)}` 
       : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
