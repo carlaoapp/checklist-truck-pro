@@ -43,6 +43,7 @@ Write-Host "  public/ copiado para a raiz"
 $msg = "v$Version"
 if ($Message) { $msg += ": $Message" }
 git add -A
+git commit -m "$msg"
 $prevEA = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 git push origin main
