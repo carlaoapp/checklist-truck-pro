@@ -13,7 +13,7 @@
  * version.json e o CACHE_NAME em sw.js para o mesmo número.
  */
 
-const APP_VERSION = '1.5.3';
+const APP_VERSION = '1.5.4';
 
 const UPDATE_CHECK_INTERVAL_MS = 60000;
 let updatePromptShownFor = null;
@@ -113,8 +113,10 @@ async function applyUpdate(newVersion, box) {
   `;
 
   try {
-    // 1) Garante que a vistoria em edição esteja gravada no aparelho antes de recarregar
-    if (typeof collectFormIntoActiveChecklist === 'function' && window.activeChecklist && window.TruckDB) {
+    // 1) Garante que a vistoria em edição esteja 100% gravada no banco antes de recarregar
+    if (window.forceSaveActiveChecklist) {
+      await window.forceSaveActiveChecklist();
+    } else if (typeof collectFormIntoActiveChecklist === 'function' && window.activeChecklist && window.TruckDB) {
       collectFormIntoActiveChecklist();
       await window.TruckDB.saveChecklist(window.activeChecklist);
     }
@@ -123,7 +125,7 @@ async function applyUpdate(newVersion, box) {
     const probe = await fetch(`index.html?t=${Date.now()}`, { cache: 'no-store' });
     if (!probe.ok) throw new Error('Servidor indisponível');
 
-    // 3) Renova somente o cache dos arquivos do app (IndexedDB e localStorage permanecem)
+    // 3) Renova somente o cache dos arquivos do app (IndexedDB e localStorage permanecem 100% intactos)
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
       for (const reg of regs) await reg.unregister();

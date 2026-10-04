@@ -157,7 +157,7 @@ function setupOnlineStatus() {
 }
 
 // ==========================================
-// INICIALIZAÇÃO DO CHECKLIST ATIVO
+// INICIALIZAÇÃO DO CHECKLIST ATIVO (PERSISTÊNCIA TOTAL)
 // ==========================================
 async function initActiveChecklist() {
   const currentUser = window.TruckAuth ? window.TruckAuth.getAuthUser() : null;
@@ -167,6 +167,7 @@ async function initActiveChecklist() {
   const savedId = localStorage.getItem('truck_active_checklist_id');
   let current = null;
 
+  // 1. Busca pelo ID salvo na sessão anterior
   if (savedId) {
     current = all.find(c => c.id === savedId);
     if (!current) {
@@ -174,21 +175,44 @@ async function initActiveChecklist() {
     }
   }
 
-  // Se não encontrou pelo ID salvo, busca a última vistoria pendente
+  // 2. Se não encontrou pelo ID salvo, busca a última vistoria pendente
   if (!current) {
     current = all.find(c => c.status === 'pendente');
   }
 
-  // Se não houver pendente, abre a última vistoria salva para preservar dados e mídias
+  // 3. Se não houver pendente, abre a última vistoria salva
   if (!current && all.length > 0) {
     current = all[0];
   }
 
+  // 4. Se encontrou, garante vinculação ao usuário logado
   if (current) {
+    if (currentUser && (!current.userId || current.userId === 'motorista_padrao')) {
+      current.userId = currentUser.id;
+      if (currentUser.name && !current.driverName) {
+        current.driverName = currentUser.name;
+      }
+      await window.TruckDB.saveChecklist(current);
+    }
     activeChecklist = current;
   } else {
-    activeChecklist = createEmptyChecklist();
-    await window.TruckDB.saveChecklist(activeChecklist);
+    // 5. Tenta recuperar de snapshot de emergência se existir
+    try {
+      const emergencyRaw = localStorage.getItem('truck_emergency_active_checklist');
+      if (emergencyRaw) {
+        const parsed = JSON.parse(emergencyRaw);
+        if (parsed && parsed.id) {
+          activeChecklist = parsed;
+          await window.TruckDB.saveChecklist(activeChecklist);
+        }
+      }
+    } catch (e) {}
+
+    // 6. Se ainda for nulo (primeiro uso do app), cria o checklist inicial
+    if (!activeChecklist) {
+      activeChecklist = createEmptyChecklist();
+      await window.TruckDB.saveChecklist(activeChecklist);
+    }
   }
 
   localStorage.setItem('truck_active_checklist_id', activeChecklist.id);
@@ -222,23 +246,35 @@ function createEmptyChecklist() {
 function populateFormFromActiveChecklist() {
   if (!activeChecklist) return;
 
-  document.getElementById('vehicleType').value = activeChecklist.vehicleType || 'Bitrem 9 Eixos';
-  document.getElementById('plateHorse').value = activeChecklist.plateHorse || '';
-  document.getElementById('plateTrailer1').value = activeChecklist.plateTrailer1 || '';
-  document.getElementById('plateTrailer2').value = activeChecklist.plateTrailer2 || '';
-  document.getElementById('driverName').value = activeChecklist.driverName || '';
-  document.getElementById('currentKm').value = activeChecklist.currentKm || '';
-  document.getElementById('inspectionDateTime').value = activeChecklist.inspectionDateTime || getFormattedCurrentDateTime();
-  document.getElementById('locationText').value = activeChecklist.locationText || '';
+  const vType = document.getElementById('vehicleType');
+  const pHorse = document.getElementById('plateHorse');
+  const pTr1 = document.getElementById('plateTrailer1');
+  const pTr2 = document.getElementById('plateTrailer2');
+  const dName = document.getElementById('driverName');
+  const km = document.getElementById('currentKm');
+  const dt = document.getElementById('inspectionDateTime');
+  const loc = document.getElementById('locationText');
+
+  if (vType) vType.value = activeChecklist.vehicleType || 'Bitrem 9 Eixos';
+  if (pHorse) pHorse.value = activeChecklist.plateHorse || '';
+  if (pTr1) pTr1.value = activeChecklist.plateTrailer1 || '';
+  if (pTr2) pTr2.value = activeChecklist.plateTrailer2 || '';
+  if (dName) dName.value = activeChecklist.driverName || '';
+  if (km) km.value = activeChecklist.currentKm || '';
+  if (dt) dt.value = activeChecklist.inspectionDateTime || getFormattedCurrentDateTime();
+  if (loc) loc.value = activeChecklist.locationText || '';
 
   if (activeChecklist.latitude && activeChecklist.longitude) {
     document.getElementById('locationCoords').textContent = `Coordenadas: Lat ${activeChecklist.latitude.toFixed(5)}, Lon ${activeChecklist.longitude.toFixed(5)}`;
     const linkMaps = document.getElementById('linkGoogleMaps');
-    linkMaps.href = `https://www.google.com/maps?q=${activeChecklist.latitude},${activeChecklist.longitude}`;
-    linkMaps.style.display = 'inline-block';
+    if (linkMaps) {
+      linkMaps.href = `https://www.google.com/maps?q=${activeChecklist.latitude},${activeChecklist.longitude}`;
+      linkMaps.style.display = 'inline-block';
+    }
   } else {
     document.getElementById('locationCoords').textContent = 'Coordenadas: Nenhuma capturada ainda';
-    document.getElementById('linkGoogleMaps').style.display = 'none';
+    const linkMaps = document.getElementById('linkGoogleMaps');
+    if (linkMaps) linkMaps.style.display = 'none';
   }
 
   updateTrailer2Visibility();
@@ -247,17 +283,39 @@ function populateFormFromActiveChecklist() {
 function collectFormIntoActiveChecklist() {
   if (!activeChecklist) return;
   const currentUser = window.TruckAuth ? window.TruckAuth.getAuthUser() : null;
-  if (currentUser && !activeChecklist.userId) {
+  if (currentUser && (!activeChecklist.userId || activeChecklist.userId === 'motorista_padrao')) {
     activeChecklist.userId = currentUser.id;
   }
-  activeChecklist.vehicleType = document.getElementById('vehicleType').value;
-  activeChecklist.plateHorse = document.getElementById('plateHorse').value;
-  activeChecklist.plateTrailer1 = document.getElementById('plateTrailer1').value;
-  activeChecklist.plateTrailer2 = document.getElementById('plateTrailer2').value;
-  activeChecklist.driverName = document.getElementById('driverName').value;
-  activeChecklist.currentKm = document.getElementById('currentKm').value;
-  activeChecklist.inspectionDateTime = document.getElementById('inspectionDateTime').value;
-  activeChecklist.locationText = document.getElementById('locationText').value;
+
+  const vType = document.getElementById('vehicleType');
+  const pHorse = document.getElementById('plateHorse');
+  const pTr1 = document.getElementById('plateTrailer1');
+  const pTr2 = document.getElementById('plateTrailer2');
+  const dName = document.getElementById('driverName');
+  const km = document.getElementById('currentKm');
+  const dt = document.getElementById('inspectionDateTime');
+  const loc = document.getElementById('locationText');
+
+  if (vType) activeChecklist.vehicleType = vType.value;
+  if (pHorse) activeChecklist.plateHorse = pHorse.value;
+  if (pTr1) activeChecklist.plateTrailer1 = pTr1.value;
+  if (pTr2) activeChecklist.plateTrailer2 = pTr2.value;
+  if (dName) activeChecklist.driverName = dName.value;
+  if (km) activeChecklist.currentKm = km.value;
+  if (dt) activeChecklist.inspectionDateTime = dt.value;
+  if (loc) activeChecklist.locationText = loc.value;
+
+  // Garante leitura das anotações de cada item abertas no formulário
+  if (activeChecklist.items) {
+    activeChecklist.items.forEach(item => {
+      const noteEl = document.querySelector(`#noteWrap_${item.id} textarea`);
+      if (noteEl) {
+        item.note = noteEl.value;
+      }
+    });
+  }
+
+  window.activeChecklist = activeChecklist;
 }
 
 // ==========================================
@@ -1314,16 +1372,56 @@ function escapeHtml(str) {
 }
 
 // ==========================================
-// MONITORAMENTO DE CONEXÃO ONLINE / OFFLINE
+// SALVAMENTO FORÇADO E LIFECYCLE DO NAVEGADOR
 // ==========================================
-window.addEventListener('offline', () => {
-  showToast('Modo Offline: vistorias e fotos continuam sendo salvas normalmente no seu aparelho.', 'warning');
+async function forceSaveActiveChecklist() {
+  if (!activeChecklist) return null;
+  collectFormIntoActiveChecklist();
+  if (window.TruckDB) {
+    const saved = await window.TruckDB.saveChecklist(activeChecklist);
+    return saved;
+  }
+  return activeChecklist;
+}
+
+// Salva imediatamente quando o usuário fecha o navegador, muda de aba ou atualiza o app
+window.addEventListener('beforeunload', () => {
+  if (activeChecklist) {
+    collectFormIntoActiveChecklist();
+    try {
+      localStorage.setItem('truck_emergency_active_checklist', JSON.stringify(activeChecklist));
+      localStorage.setItem(`truck_chk_snapshot_${activeChecklist.id}`, JSON.stringify(activeChecklist));
+      localStorage.setItem('truck_active_checklist_id', activeChecklist.id);
+    } catch (e) {}
+    if (window.TruckDB) {
+      window.TruckDB.saveChecklist(activeChecklist);
+    }
+  }
 });
 
-window.addEventListener('online', () => {
-  showToast('Conexão com a internet restabelecida!', 'success');
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && activeChecklist && window.TruckDB) {
+    collectFormIntoActiveChecklist();
+    try {
+      localStorage.setItem('truck_emergency_active_checklist', JSON.stringify(activeChecklist));
+      localStorage.setItem(`truck_chk_snapshot_${activeChecklist.id}`, JSON.stringify(activeChecklist));
+    } catch (e) {}
+    window.TruckDB.saveChecklist(activeChecklist);
+  }
 });
 
-// Funções expostas globalmente para o módulo de autenticação e histórico
+window.addEventListener('pagehide', () => {
+  if (activeChecklist && window.TruckDB) {
+    collectFormIntoActiveChecklist();
+    try {
+      localStorage.setItem('truck_emergency_active_checklist', JSON.stringify(activeChecklist));
+    } catch (e) {}
+    window.TruckDB.saveChecklist(activeChecklist);
+  }
+});
+
+// Funções expostas globalmente para o módulo de autenticação, update e histórico
 window.initActiveChecklist = initActiveChecklist;
 window.refreshHistoryList = refreshHistoryList;
+window.collectFormIntoActiveChecklist = collectFormIntoActiveChecklist;
+window.forceSaveActiveChecklist = forceSaveActiveChecklist;

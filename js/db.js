@@ -68,6 +68,7 @@ function openDB() {
 // ==========================================
 
 async function saveChecklist(checklist) {
+  if (!checklist) return null;
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([STORE_CHECKLISTS], 'readwrite');
@@ -81,19 +82,41 @@ async function saveChecklist(checklist) {
     };
 
     const request = store.put(record);
-    request.onsuccess = () => resolve(record);
+    request.onsuccess = () => {
+      // Snapshot de segurança no localStorage para resiliência total contra atualizações do navegador
+      try {
+        localStorage.setItem(`truck_chk_snapshot_${record.id}`, JSON.stringify(record));
+        localStorage.setItem('truck_active_checklist_id', record.id);
+      } catch (e) {}
+      resolve(record);
+    };
     request.onerror = (e) => reject(e.target.error);
   });
 }
 
 async function getChecklist(id) {
+  if (!id) return null;
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([STORE_CHECKLISTS], 'readonly');
     const store = transaction.objectStore(STORE_CHECKLISTS);
     const request = store.get(id);
 
-    request.onsuccess = () => resolve(request.result || null);
+    request.onsuccess = () => {
+      if (request.result) {
+        resolve(request.result);
+      } else {
+        // Tenta recuperar do snapshot do localStorage se o banco ainda estiver abrindo
+        try {
+          const snapshot = localStorage.getItem(`truck_chk_snapshot_${id}`);
+          if (snapshot) {
+            resolve(JSON.parse(snapshot));
+            return;
+          }
+        } catch (e) {}
+        resolve(null);
+      }
+    };
     request.onerror = (e) => reject(e.target.error);
   });
 }
@@ -107,12 +130,12 @@ async function getAllChecklists(userId = null) {
 
     request.onsuccess = () => {
       let records = request.result || [];
-      // Isolamento seguro por usuário: se informado userId, filtra apenas os do motorista atual
+      // Isolamento seguro e resiliente: se informado userId, inclui os do motorista e quaisquer vistorias não vinculadas ou da conta padrão
       if (userId) {
-        records = records.filter(c => c.userId === userId || !c.userId);
+        records = records.filter(c => !c.userId || c.userId === userId || c.userId === 'motorista_padrao');
       }
       // Ordena pelos mais recentemente atualizados
-      records.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+      records.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
       resolve(records);
     };
     request.onerror = (e) => reject(e.target.error);
