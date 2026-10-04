@@ -16,7 +16,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=8">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=8">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png?v=8">
-  <link rel="stylesheet" href="css/style.css?v=1.5.4">
+  <link rel="stylesheet" href="css/style.css?v=1.5.5">
 </head>
 <body class="theme-preto">
 
@@ -98,7 +98,7 @@
         <a href="#" id="authToggleModeLink" class="auth-link" onclick="event.preventDefault(); TruckAuth.setAuthMode(currentAuthMode === 'login' ? 'register' : 'login')">
           Não possui conta? Cadastre-se agora.
         </a>
-        <div class="auth-version">Versão <span class="app-version-tag">1.5.4</span></div>
+        <div class="auth-version">Versão <span class="app-version-tag">1.5.5</span></div>
       </div>
     </div>
   </div>
@@ -120,7 +120,7 @@
       <button type="button" id="btnEnterApp" class="btn-splash-enter" onclick="dismissSplash()">
         Acessar Checklist
       </button>
-      <p class="splash-version">Versão <span class="app-version-tag">1.5.4</span></p>
+      <p class="splash-version">Versão <span class="app-version-tag">1.5.5</span></p>
     </div>
   </div>
 
@@ -140,7 +140,7 @@
           <div id="connectionStatus" class="offline-pill">● Conectado</div>
           <button type="button" id="btnCheckUpdate" class="version-pill" title="Toque para verificar atualização" onclick="checkForUpdates(true)">
             <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span class="app-version-tag">v1.5.4</span>
+            <span class="app-version-tag">v1.5.5</span>
           </button>
         </div>
       </div>
@@ -451,6 +451,82 @@
   </div>
 
   <!-- ======================================================================
+       MODAL: PRÉVIA E COMPARTILHAMENTO DE VISTORIA (COM FOTOS E VÍDEOS)
+       ====================================================================== -->
+  <div id="modalSharePreview" class="modal-overlay" style="display: none; z-index: 10000;">
+    <div class="modal-content modal-share-box">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 14px;">
+        <div>
+          <h3 class="modal-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+            <svg class="ui-icon" style="color: #22c55e; width: 22px; height: 22px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            <span>Compartilhar Vistoria</span>
+          </h3>
+          <p class="modal-subtitle" id="modalShareSubtitle" style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--text-muted);">
+            Placa: <strong id="modalSharePlate">---</strong>
+          </p>
+        </div>
+        <button type="button" onclick="closeSharePreviewModal()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.4rem; padding: 4px 8px; line-height: 1;">✕</button>
+      </div>
+
+      <!-- Seção de Mídias Prévia -->
+      <div style="margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-weight: 700; font-size: 0.88rem; color: var(--text-color); display: inline-flex; align-items: center; gap: 6px;">
+            <svg class="ui-icon" style="width: 16px; height: 16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+            <span>Fotos e Vídeos (<span id="modalShareMediaCount">0</span>)</span>
+          </span>
+          <button type="button" onclick="toggleAllModalMediaSelection()" style="background: none; border: none; color: #38bdf8; font-size: 0.78rem; font-weight: 700; cursor: pointer;">Marcar / Desmarcar Todas</button>
+        </div>
+        
+        <div id="modalShareMediaThumbnails" class="share-media-grid" style="max-height: 160px; overflow-y: auto; padding: 6px; background: rgba(0,0,0,0.25); border-radius: 8px; border: 1px solid var(--border-color);">
+          <!-- Miniaturas dinâmicas injetadas via JS -->
+        </div>
+      </div>
+
+      <!-- Prévia do Relatório -->
+      <div style="margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-color);">Prévia do Relatório Formatado:</span>
+          <button type="button" onclick="copyReportTextDirectly()" style="background: none; border: none; color: #38bdf8; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+            <svg class="ui-icon" style="width: 13px; height: 13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            <span>Copiar Texto</span>
+          </button>
+        </div>
+        <textarea id="modalShareReportPreview" readonly class="input-control" style="width: 100%; height: 110px; font-family: monospace; font-size: 0.78rem; line-height: 1.35; resize: none; background: rgba(0,0,0,0.35);"></textarea>
+      </div>
+
+      <!-- Botões de Ação de Compartilhamento -->
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- 1. WhatsApp / Gaveta Nativa com Fotos e Vídeos -->
+        <button type="button" id="btnExecuteDirectShare" class="btn-share-whatsapp-full" style="font-size: 0.98rem; padding: 13px 16px; justify-content: center; box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);" onclick="executeShareNativeWithFiles()">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+          <span>Compartilhar no WhatsApp com Fotos/Vídeos</span>
+        </button>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <!-- 2. Compartilhar em Outros Aplicativos -->
+          <button type="button" class="btn-secondary" style="padding: 10px; font-size: 0.82rem; justify-content: center; display: inline-flex; align-items: center; gap: 6px;" onclick="executeShareOtherApps()">
+            <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            <span>Outros Apps</span>
+          </button>
+
+          <!-- 3. Baixar Fotos e Vídeos -->
+          <button type="button" class="btn-secondary" style="padding: 10px; font-size: 0.82rem; justify-content: center; display: inline-flex; align-items: center; gap: 6px;" onclick="downloadSelectedShareMedias()">
+            <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Salvar Fotos</span>
+          </button>
+        </div>
+
+        <button type="button" class="btn-secondary" onclick="closeSharePreviewModal()" style="margin-top: 4px; padding: 8px; font-size: 0.82rem; justify-content: center; background: transparent; border-color: rgba(255,255,255,0.15);">
+          Cancelar
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================
        MODAL: ADICIONAR ITEM PERSONALIZADO
        ====================================================================== -->
   <div id="modalCustomItem" class="modal-overlay" style="display: none;">
@@ -483,16 +559,16 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- SCRIPTS -->
-  <script src="js/db.js?v=1.5.4"></script>
-  <script src="js/auth.js?v=1.5.4"></script>
-  <script src="js/app.js?v=1.5.4"></script>
-  <script src="js/update.js?v=1.5.4"></script>
+  <script src="js/db.js?v=1.5.5"></script>
+  <script src="js/auth.js?v=1.5.5"></script>
+  <script src="js/app.js?v=1.5.5"></script>
+  <script src="js/update.js?v=1.5.5"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js?v=1.5.4')
+        navigator.serviceWorker.register('sw.js?v=1.5.5')
           .then((reg) => {
             reg.update();
             console.log('Service Worker registrado:', reg.scope);

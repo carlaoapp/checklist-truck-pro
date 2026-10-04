@@ -1007,8 +1007,15 @@ async function deleteHistoryChecklist(checklistId) {
 }
 
 // ==========================================
-// COMPARTILHAMENTO DE RELATÓRIO E MÍDIAS
+// CENTRAL DE COMPARTILHAMENTO & PRÉVIA COM MÍDIAS
 // ==========================================
+let currentModalShareData = {
+  checklist: null,
+  medias: [],
+  text: '',
+  files: []
+};
+
 function formatChecklistReportText(chk, medias) {
   if (!chk) return '';
   const mediaList = medias || [];
@@ -1035,13 +1042,16 @@ function formatChecklistReportText(chk, medias) {
 
   report += `*ITENS VISTORIADOS:*\n`;
   (chk.items || []).forEach(item => {
-    let label = 'Não verificado';
-    let tag = '[ - ]';
-    if (item.status === 'ok') { tag = '[OK]'; label = 'Conforme'; }
-    if (item.status === 'warn') { tag = '[ALERTA]'; label = 'Atenção'; }
-    if (item.status === 'danger') { tag = '[DEFEITO]'; label = 'Não Conforme'; }
+    let tag = '⚪ [NÃO VERIFICADO]';
+    if (item.status === 'ok') {
+      tag = '🟢 [CONFORME / OK]';
+    } else if (item.status === 'warn') {
+      tag = '🟡 [ATENÇÃO / ALERTA]';
+    } else if (item.status === 'danger') {
+      tag = '🔴 [DEFEITO / NÃO CONFORME]';
+    }
 
-    report += `${tag} ${item.title}: ${label}`;
+    report += `${tag} ${item.title}`;
     if (item.note && item.note.trim()) {
       report += ` (Obs: ${item.note.trim()})`;
     }
@@ -1056,10 +1066,10 @@ function formatChecklistReportText(chk, medias) {
     mediaList.forEach((m, idx) => {
       const parentItem = (chk.items || []).find(i => i.id === m.itemId);
       const itemTitle = parentItem ? parentItem.title : 'Item';
-      const status = m.resolved ? '[RESOLVIDO]' : '[PENDENTE]';
-      const typeStr = m.type === 'photo' ? 'Foto' : 'Vídeo';
+      const statusIcon = m.resolved ? '✅ [RESOLVIDO]' : '⚠️ [PENDENTE]';
+      const typeStr = m.type === 'photo' ? '📷 Foto' : '🎥 Vídeo';
       const shareIndicator = (m.includeInShare !== false) ? '✓ [ENVIADO]' : '✗ [NÃO ENVIADO]';
-      report += `${idx + 1}. [${itemTitle}] ${typeStr} - ${status} ${shareIndicator}\n`;
+      report += `${idx + 1}. [${itemTitle}] ${typeStr} - ${statusIcon} ${shareIndicator}\n`;
       if (m.notes && m.notes.trim()) {
         report += `   ↳ Obs: ${m.notes.trim()}\n`;
       }
@@ -1110,20 +1120,18 @@ function prepareMediaFiles(medias, plate) {
   return files;
 }
 
-async function shareReportViaWhatsApp(checklistId) {
+async function openSharePreviewModal(checklistId) {
   const targetId = checklistId || (activeChecklist ? activeChecklist.id : null);
   if (!targetId) {
     showToast('Nenhum checklist disponível para compartilhar.', 'warning');
     return;
   }
 
-  // Se for o checklist ativo na tela, salva os dados mais recentes imediatamente
   if (activeChecklist && activeChecklist.id === targetId) {
     collectFormIntoActiveChecklist();
     await window.TruckDB.saveChecklist(activeChecklist);
   }
 
-  // Busca rápida em paralelo dos dados e mídias com máxima performance
   const [chkData, medias] = await Promise.all([
     window.TruckDB.getChecklist(targetId),
     window.TruckDB.getMediaByChecklist(targetId)
@@ -1135,86 +1143,222 @@ async function shareReportViaWhatsApp(checklistId) {
     return;
   }
 
-  const text = formatChecklistReportText(chk, medias);
-  const selectedMedias = (medias || []).filter(m => m.includeInShare !== false);
+  currentModalShareData.checklist = chk;
+  currentModalShareData.medias = medias || [];
+  currentModalShareData.text = formatChecklistReportText(chk, currentModalShareData.medias);
+
+  const plateEl = document.getElementById('modalSharePlate');
+  if (plateEl) plateEl.textContent = (chk.plateHorse || 'SEM PLACA').toUpperCase();
+
+  const reportTextarea = document.getElementById('modalShareReportPreview');
+  if (reportTextarea) reportTextarea.value = currentModalShareData.text;
+
+  renderModalShareMediaThumbnails();
+
+  const modal = document.getElementById('modalSharePreview');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeSharePreviewModal() {
+  const modal = document.getElementById('modalSharePreview');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderModalShareMediaThumbnails() {
+  const container = document.getElementById('modalShareMediaThumbnails');
+  const countBadge = document.getElementById('modalShareMediaCount');
+  if (!container) return;
+
+  const medias = currentModalShareData.medias || [];
+  const selectedCount = medias.filter(m => m.includeInShare !== false).length;
+  if (countBadge) countBadge.textContent = `${selectedCount} de ${medias.length} selecionadas`;
+
+  if (medias.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1 / -1; padding: 12px; font-size: 0.8rem; color: var(--text-muted); text-align: center;">Nenhuma foto ou vídeo anexado nesta vistoria.</div>`;
+    return;
+  }
+
+  container.innerHTML = medias.map((m, idx) => {
+    const isSelected = (m.includeInShare !== false);
+    const blobUrl = URL.createObjectURL(m.blob);
+    return `
+      <div class="share-thumb-card ${isSelected ? 'selected' : 'unselected'}" onclick="toggleModalMediaItem('${m.id}')" title="Clique para incluir/remover">
+        <span class="share-thumb-badge">${m.type === 'photo' ? '📷 FOTO' : '🎥 VÍDEO'}</span>
+        <span class="share-thumb-check">✓</span>
+        ${m.type === 'photo'
+          ? `<img src="${blobUrl}" alt="Foto ${idx+1}">`
+          : `<video src="${blobUrl}"></video>`
+        }
+      </div>
+    `;
+  }).join('');
+}
+
+async function toggleModalMediaItem(mediaId) {
+  const item = (currentModalShareData.medias || []).find(m => m.id === mediaId);
+  if (!item) return;
+
+  const newStatus = (item.includeInShare === false);
+  item.includeInShare = newStatus;
+  await window.TruckDB.updateMediaRecord(mediaId, { includeInShare: newStatus });
+
+  currentModalShareData.text = formatChecklistReportText(currentModalShareData.checklist, currentModalShareData.medias);
+  const reportTextarea = document.getElementById('modalShareReportPreview');
+  if (reportTextarea) reportTextarea.value = currentModalShareData.text;
+
+  renderModalShareMediaThumbnails();
+}
+
+async function toggleAllModalMediaSelection() {
+  const medias = currentModalShareData.medias || [];
+  if (medias.length === 0) return;
+
+  const anySelected = medias.some(m => m.includeInShare !== false);
+  const newSelection = !anySelected;
+
+  for (const m of medias) {
+    m.includeInShare = newSelection;
+    await window.TruckDB.updateMediaRecord(m.id, { includeInShare: newSelection });
+  }
+
+  currentModalShareData.text = formatChecklistReportText(currentModalShareData.checklist, currentModalShareData.medias);
+  const reportTextarea = document.getElementById('modalShareReportPreview');
+  if (reportTextarea) reportTextarea.value = currentModalShareData.text;
+
+  renderModalShareMediaThumbnails();
+}
+
+async function copyReportTextDirectly() {
+  const text = currentModalShareData.text || '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      showToast('Relatório copiado para a área de transferência!', 'success');
+    } else {
+      showToast('Texto disponível na caixa de prévia.', 'info');
+    }
+  } catch (e) {
+    showToast('Texto copiado!', 'success');
+  }
+}
+
+async function executeShareNativeWithFiles() {
+  const chk = currentModalShareData.checklist;
+  if (!chk) return;
+
+  const medias = currentModalShareData.medias || [];
+  const selectedMedias = medias.filter(m => m.includeInShare !== false);
   const filesToShare = prepareMediaFiles(selectedMedias, chk.plateHorse);
+  const text = currentModalShareData.text;
   const shareTitle = `Vistoria Veicular - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
 
-  // Copia o relatório com segurança para o clipboard
+  // Copia o relatório de forma silenciosa para garantir que o texto esteja pronto caso o usuário queira colar
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
     }
-  } catch (clipErr) {
-    console.warn('[Share] Clipboard write:', clipErr);
-  }
+  } catch (e) {}
 
-  // 1. TENTATIVA: Compartilhamento Nativo Direto com Mídias e Texto (Android/iOS)
-  // O Android abre a gaveta nativa e quando o usuário seleciona WhatsApp, envia fotos/vídeos e texto juntos!
+  // 1. Tenta compartilhamento nativo direto com Arquivos e Texto
   if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
     try {
-      showToast('Compartilhando vistoria com fotos e vídeos...', 'info');
+      showToast('Abrindo WhatsApp / Aplicativo com fotos e vídeos...', 'info');
       await navigator.share({
         title: shareTitle,
         text: text,
         files: filesToShare
       });
       showToast('Vistoria e mídias compartilhadas com sucesso!', 'success');
+      closeSharePreviewModal();
       return;
     } catch (err) {
-      if (err.name === 'AbortError') {
-        // Usuário fechou ou cancelou o menu de compartilhamento
-        return;
-      }
-      console.warn('[Share] Tentativa 1 com arquivos+texto falhou:', err);
+      if (err.name === 'AbortError') return;
+      console.warn('[Share] Erro compartilhando arquivos com texto, tentando apenas arquivos:', err);
 
-      // 2. TENTATIVA: Compartilhar apenas os arquivos (o texto já foi copiado para a área de transferência)
+      // 2. Tenta compartilhar apenas os arquivos (o texto já está no clipboard)
       try {
         await navigator.share({
           title: shareTitle,
           files: filesToShare
         });
-        showToast('Fotos/Vídeos enviados! O texto do relatório foi copiado para colar no WhatsApp.', 'success');
+        showToast('Fotos/Vídeos enviados! O texto do relatório foi copiado.', 'success');
+        closeSharePreviewModal();
         return;
       } catch (err2) {
         if (err2.name === 'AbortError') return;
-        console.warn('[Share] Tentativa 2 apenas com arquivos falhou:', err2);
       }
     }
   }
 
-  // 3. TENTATIVA: Compartilhamento Nativo de Texto
+  // 3. Tenta compartilhar texto nativo se não houver arquivos ou se falhar
   if (navigator.share) {
     try {
       await navigator.share({
         title: shareTitle,
         text: text
       });
-      showToast('Relatório de vistoria compartilhado com sucesso!', 'success');
+      showToast('Relatório compartilhado com sucesso!', 'success');
+      closeSharePreviewModal();
       return;
     } catch (err3) {
       if (err3.name === 'AbortError') return;
-      console.warn('[Share] Tentativa 3 com texto falhou:', err3);
     }
   }
 
-  // 4. FALLBACK: Redirecionamento Direto para o WhatsApp sem disparar bloqueador de pop-ups
+  // 4. Fallback direto para o WhatsApp
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const encodedText = encodeURIComponent(text);
   const whatsappUrl = isMobile 
     ? `whatsapp://send?text=${encodedText}` 
     : `https://api.whatsapp.com/send?text=${encodedText}`;
 
-  if (filesToShare.length > 0) {
-    showToast(`${filesToShare.length} mídia(s) na vistoria. Relatório copiado! Abrindo WhatsApp...`, 'success');
-  } else {
-    showToast('Relatório copiado! Abrindo WhatsApp...', 'success');
-  }
+  showToast('Abrindo WhatsApp com o relatório copiado...', 'success');
+  closeSharePreviewModal();
 
-  // Redirecionamento limpo na mesma janela (evita 100% o bloqueio de pop-ups do navegador)
   setTimeout(() => {
     window.location.href = whatsappUrl;
   }, 100);
+}
+
+async function executeShareOtherApps() {
+  await executeShareNativeWithFiles();
+}
+
+async function downloadSelectedShareMedias() {
+  const chk = currentModalShareData.checklist;
+  const medias = (currentModalShareData.medias || []).filter(m => m.includeInShare !== false);
+  if (medias.length === 0) {
+    showToast('Nenhuma foto ou vídeo selecionada para salvar.', 'warning');
+    return;
+  }
+
+  const plate = (chk?.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
+  let count = 0;
+
+  for (let i = 0; i < medias.length; i++) {
+    const m = medias[i];
+    if (!m.blob) continue;
+    const isPhoto = (m.type === 'photo');
+    const ext = isPhoto ? 'jpg' : 'mp4';
+    const filename = m.name || `VISTORIA_${plate}_${m.itemId || 'item'}_${i + 1}.${ext}`;
+    
+    const url = URL.createObjectURL(m.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    count++;
+  }
+
+  showToast(`${count} foto(s)/vídeo(s) baixada(s) para a galeria do aparelho!`, 'success');
+}
+
+// Mantém compatibilidade com chamadas anteriores
+async function shareReportViaWhatsApp(checklistId) {
+  await openSharePreviewModal(checklistId);
 }
 
 // ==========================================
@@ -1420,8 +1564,17 @@ window.addEventListener('pagehide', () => {
   }
 });
 
-// Funções expostas globalmente para o módulo de autenticação, update e histórico
+// Funções expostas globalmente para o módulo de autenticação, update, compartilhamento e histórico
 window.initActiveChecklist = initActiveChecklist;
 window.refreshHistoryList = refreshHistoryList;
 window.collectFormIntoActiveChecklist = collectFormIntoActiveChecklist;
 window.forceSaveActiveChecklist = forceSaveActiveChecklist;
+window.openSharePreviewModal = openSharePreviewModal;
+window.closeSharePreviewModal = closeSharePreviewModal;
+window.toggleModalMediaItem = toggleModalMediaItem;
+window.toggleAllModalMediaSelection = toggleAllModalMediaSelection;
+window.copyReportTextDirectly = copyReportTextDirectly;
+window.executeShareNativeWithFiles = executeShareNativeWithFiles;
+window.executeShareOtherApps = executeShareOtherApps;
+window.downloadSelectedShareMedias = downloadSelectedShareMedias;
+window.shareReportViaWhatsApp = shareReportViaWhatsApp;
