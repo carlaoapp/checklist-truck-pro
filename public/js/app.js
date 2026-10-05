@@ -1220,7 +1220,7 @@ function extractVideoFrameForShare(blob, maxWidth = 1280, maxHeight = 1280, qual
   });
 }
 
-// Prepara arquivos de imagem otimizados para compartilhamento nativo no WhatsApp
+// Prepara arquivos de fotos e vídeos para compartilhamento nativo no WhatsApp
 async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
   const files = [];
   const cleanPlate = (chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
@@ -1236,23 +1236,23 @@ async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
     const itemTag = parentItem ? parentItem.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 15) : `Item_${i + 1}`;
     
     try {
-      let finalBlob = null;
-      let filename = '';
-
       if (m.type === 'photo') {
-        finalBlob = await compressImageForShare(m.blob);
-        filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.jpg`;
-      } else if (m.type === 'video') {
-        finalBlob = await extractVideoFrameForShare(m.blob);
-        filename = `VISTORIA_${cleanPlate}_${itemTag}_Video_Frame_${i + 1}.jpg`;
-      }
-
-      if (finalBlob) {
-        const file = new File([finalBlob], filename, { type: 'image/jpeg', lastModified: Date.now() });
+        const compressedBlob = await compressImageForShare(m.blob);
+        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.jpg`;
+        const file = new File([compressedBlob || m.blob], filename, { type: 'image/jpeg', lastModified: Date.now() });
         files.push(file);
+      } else if (m.type === 'video') {
+        // Envia o arquivo de vídeo real (.mp4)
+        const ext = (m.name && m.name.includes('.')) ? m.name.split('.').pop() : 'mp4';
+        const cleanExt = (ext === 'webm' || !ext) ? 'mp4' : ext;
+        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Video_${i + 1}.${cleanExt}`;
+        const mime = m.mimeType || (m.blob && m.blob.type) || 'video/mp4';
+        const videoMime = mime.includes('webm') ? 'video/mp4' : mime;
+        const videoFile = new File([m.blob], filename, { type: videoMime, lastModified: m.timestamp || Date.now() });
+        files.push(videoFile);
       }
     } catch (err) {
-      console.warn('Erro ao otimizar mídia para compartilhamento:', err);
+      console.warn('Erro ao preparar mídia para compartilhamento:', err);
     }
   }
 
@@ -1318,7 +1318,7 @@ async function shareIndividualItem(itemId) {
     itemReport += `--------------------------------------\n`;
     itemReport += `Enviado via Checklist Truck Pro`;
 
-    // Prepara mídias do item de forma leve para o WhatsApp
+    // Prepara mídias do item (fotos e vídeos reais) de forma leve para o WhatsApp
     const shareFiles = [];
     const cleanPlate = (activeChecklist.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
     const cleanItemName = item.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 15);
@@ -1329,21 +1329,18 @@ async function shareIndividualItem(itemId) {
 
       if (m.type === 'photo') {
         const compressedBlob = await compressImageForShare(m.blob);
-        if (compressedBlob) {
-          const file = new File([compressedBlob], `ITEM_${cleanPlate}_${cleanItemName}_Foto_${i + 1}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
-          shareFiles.push(file);
-        }
+        const filename = `ITEM_${cleanPlate}_${cleanItemName}_Foto_${i + 1}.jpg`;
+        const file = new File([compressedBlob || m.blob], filename, { type: 'image/jpeg', lastModified: Date.now() });
+        shareFiles.push(file);
       } else if (m.type === 'video') {
-        if (m.blob.size && m.blob.size <= 12 * 1024 * 1024 && (m.blob.type === 'video/mp4' || m.blob.type.includes('mp4'))) {
-          const file = new File([m.blob], `ITEM_${cleanPlate}_${cleanItemName}_Video_${i + 1}.mp4`, { type: 'video/mp4', lastModified: Date.now() });
-          shareFiles.push(file);
-        } else {
-          const frameBlob = await extractVideoFrameForShare(m.blob);
-          if (frameBlob) {
-            const file = new File([frameBlob], `ITEM_${cleanPlate}_${cleanItemName}_Video_Frame_${i + 1}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
-            shareFiles.push(file);
-          }
-        }
+        // Envia o arquivo de vídeo real (.mp4)
+        const ext = (m.name && m.name.includes('.')) ? m.name.split('.').pop() : 'mp4';
+        const cleanExt = (ext === 'webm' || !ext) ? 'mp4' : ext;
+        const filename = `ITEM_${cleanPlate}_${cleanItemName}_Video_${i + 1}.${cleanExt}`;
+        const mime = m.mimeType || (m.blob && m.blob.type) || 'video/mp4';
+        const videoMime = mime.includes('webm') ? 'video/mp4' : mime;
+        const videoFile = new File([m.blob], filename, { type: videoMime, lastModified: m.timestamp || Date.now() });
+        shareFiles.push(videoFile);
       }
     }
 
