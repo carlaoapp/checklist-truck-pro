@@ -1249,27 +1249,62 @@ function buildVideoCaption(chk, item, idx, total) {
   return cap;
 }
 
-// Envia fotos + relatório juntos e depois cada vídeo (arquivo real) com legenda.
-// O Android/WhatsApp recusa misturar fotos e vídeos numa mesma chamada, e cada
-// compartilhamento exige um toque do usuário; por isso os vídeos vão em fila.
-async function shareMediaWithReport({ title, text, photoFiles, videoFiles }) {
-  const canFiles = (files) => files.length > 0 && navigator.canShare && navigator.canShare({ files });
-  let group = [];
-  let queue = [];
-  if (photoFiles.length > 0) {
-    group = photoFiles;
-    queue = [...videoFiles];
-  } else if (videoFiles.length > 0) {
-    group = [videoFiles[0]];
-    queue = videoFiles.slice(1);
-  }
+// O Chrome/Android só aceita até ~50 MB e 10 arquivos por compartilhamento.
+// Agrupamos fotos + vídeos em lotes que cabem nesse limite: o 1º lote leva o
+// relatório completo; os demais vão por uma barra de envio (1 toque por lote).
+const SHARE_BATCH_MAX_BYTES = 45 * 1024 * 1024;
+const SHARE_BATCH_MAX_FILES = 10;
 
-  if (group.length > 0 && canFiles(group)) {
+function buildShareBatches(photoFiles, videoFiles) {
+  const ordered = [...photoFiles, ...videoFiles];
+  const batches = [];
+  let cur = { files: [], bytes: 0 };
+  ordered.forEach(f => {
+    const size = f.size || 0;
+    if (cur.files.length > 0 && (cur.bytes + size > SHARE_BATCH_MAX_BYTES || cur.files.length >= SHARE_BATCH_MAX_FILES)) {
+      batches.push(cur);
+      cur = { files: [], bytes: 0 };
+    }
+    cur.files.push(f);
+    cur.bytes += size;
+  });
+  if (cur.files.length > 0) batches.push(cur);
+  return batches;
+}
+
+function batchCaption(batch, idx, total, chk) {
+  const caps = batch.files.filter(f => f.shareCaption).map(f => f.shareCaption);
+  let t = `📎 *Mídias da vistoria ${idx}/${total}* - Placa ${((chk && chk.plateHorse) || '---').toUpperCase()}`;
+  if (caps.length > 0) t += `\n\n${caps.join('\n\n')}`;
+  return t;
+}
+
+function explainShareFailure(batch) {
+  const big = batch.files.find(f => (f.size || 0) > 50 * 1024 * 1024);
+  if (big) {
+    return `O arquivo "${big.name}" tem ${(big.size / 1048576).toFixed(0)} MB e passa do limite de 50 MB do navegador para compartilhar.`;
+  }
+  return 'O aparelho recusou este lote de arquivos.';
+}
+
+async function shareMediaWithReport({ title, text, photoFiles, videoFiles, chk }) {
+  const batches = buildShareBatches(photoFiles, videoFiles);
+  const canFiles = (files) => files.length > 0 && navigator.canShare && navigator.canShare({ files });
+
+  if (batches.length > 0 && canFiles(batches[0].files)) {
     try {
-      await navigator.share({ title, text, files: group });
-      showToast('Relatório e mídias enviados!', 'success');
+      await navigator.share({ title, text, files: batches[0].files });
       closeSharePreviewModal();
-      if (queue.length > 0) showVideoShareQueue(queue, title);
+      const rest = batches.slice(1).map((b, i) => ({
+        batch: b,
+        text: batchCaption(b, i + 2, batches.length, chk)
+      }));
+      if (rest.length > 0) {
+        showToast('Relatório enviado! Falta enviar o restante das mídias.', 'info');
+        showVideoShareQueue(rest, title);
+      } else {
+        showToast('Relatório e mídias enviados!', 'success');
+      }
       return 'sent';
     } catch (err) {
       if (err.name === 'AbortError') return 'aborted';
@@ -1277,14 +1312,18 @@ async function shareMediaWithReport({ title, text, photoFiles, videoFiles }) {
     }
   }
 
-  // Aparelho não aceitou arquivos junto com o texto: envia o relatório como texto
-  // e libera todos os vídeos na fila de envio individual
+  // Primeiro lote recusado: envia o relatório como texto e libera TODOS os lotes na fila
   if (navigator.canShare && navigator.canShare({ title, text })) {
     try {
       await navigator.share({ title, text });
       closeSharePreviewModal();
-      const all = videoFiles.length > 0 ? videoFiles : [];
-      if (all.length > 0) showVideoShareQueue(all, title);
+      if (batches.length > 0) {
+        showToast('Relatório enviado. ' + explainShareFailure(batches[0]), 'warning');
+        showVideoShareQueue(batches.map((b, i) => ({
+          batch: b,
+          text: batchCaption(b, i + 1, batches.length, chk)
+        })), title);
+      }
       return 'sent';
     } catch (err) {
       if (err.name === 'AbortError') return 'aborted';
@@ -1293,12 +1332,12 @@ async function shareMediaWithReport({ title, text, photoFiles, videoFiles }) {
   return 'failed';
 }
 
-// Barra fixa com botão para enviar cada vídeo restante (precisa de um toque por vídeo)
-function showVideoShareQueue(videos, title) {
+// Barra fixa com botão para enviar cada lote restante (precisa de um toque por lote)
+function showVideoShareQueue(entries, title) {
   const old = document.getElementById('videoShareQueueBar');
   if (old) old.remove();
 
-  const queue = [...videos];
+  const queue = [...entries];
   const total = queue.length;
   const bar = document.createElement('div');
   bar.id = 'videoShareQueueBar';
@@ -1308,31 +1347,34 @@ function showVideoShareQueue(videos, title) {
   const render = () => {
     if (queue.length === 0) {
       bar.remove();
-      showToast('Todos os vídeos foram enviados!', 'success');
+      showToast('Todas as mídias foram enviadas!', 'success');
       return;
     }
+    const cur = queue[0];
+    const nVid = cur.batch.files.filter(f => (f.type || '').startsWith('video')).length;
+    const nImg = cur.batch.files.length - nVid;
     bar.innerHTML = `
-      <div style="color:#e2e8f0;font-size:0.88rem;font-weight:700;">🎥 Falta enviar ${queue.length} de ${total} vídeo(s)</div>
+      <div style="color:#e2e8f0;font-size:0.88rem;font-weight:700;">📎 Falta enviar ${queue.length} de ${total} grupo(s) de mídia</div>
+      <div style="color:#94a3b8;font-size:0.8rem;">Próximo: ${nImg} foto(s) e ${nVid} vídeo(s)</div>
       <div style="display:flex;gap:8px;">
-        <button type="button" id="btnSendNextVideo" style="flex:1;padding:12px;border:none;border-radius:10px;background:#047857;color:#fff;font-weight:700;font-size:0.95rem;">▶ Enviar vídeo ${total - queue.length + 1} de ${total}</button>
+        <button type="button" id="btnSendNextVideo" style="flex:1;padding:12px;border:none;border-radius:10px;background:#047857;color:#fff;font-weight:700;font-size:0.95rem;">▶ Enviar agora</button>
         <button type="button" id="btnCloseVideoQueue" style="padding:12px;border:1px solid rgba(255,255,255,0.25);border-radius:10px;background:transparent;color:#cbd5e1;font-size:0.9rem;">Fechar</button>
       </div>`;
     document.getElementById('btnCloseVideoQueue').onclick = () => bar.remove();
     document.getElementById('btnSendNextVideo').onclick = async () => {
-      const file = queue[0];
+      const files = cur.batch.files;
       try {
-        const data = { title, text: file.shareCaption || '', files: [file] };
-        if (navigator.canShare && !navigator.canShare({ files: [file] })) {
-          showToast('Este vídeo não pôde ser compartilhado pelo aparelho.', 'warning');
+        if (navigator.canShare && !navigator.canShare({ files })) {
+          showToast(explainShareFailure(cur.batch), 'warning');
           return;
         }
-        await navigator.share(data);
+        await navigator.share({ title, text: cur.text, files });
         queue.shift();
         render();
       } catch (err) {
         if (err.name !== 'AbortError') {
-          console.warn('Falha ao enviar vídeo:', err);
-          showToast('Falha ao enviar o vídeo. Tente novamente.', 'warning');
+          console.warn('Falha ao enviar mídias:', err);
+          showToast('Falha ao enviar: ' + (err.message || err.name), 'warning');
         }
       }
     };
@@ -1425,7 +1467,8 @@ async function shareIndividualItem(itemId) {
         title: shareTitle,
         text: itemReport,
         photoFiles,
-        videoFiles
+        videoFiles,
+        chk: activeChecklist
       });
       if (result === 'sent' || result === 'aborted') return;
     }
@@ -1764,7 +1807,8 @@ async function executeShareReportDocument(targetMediaType = 'auto') {
       title: shareTitle,
       text,
       photoFiles: sendPhotos,
-      videoFiles: sendVideos
+      videoFiles: sendVideos,
+      chk
     });
     if (result === 'sent' || result === 'aborted') return;
 

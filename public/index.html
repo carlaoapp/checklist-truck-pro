@@ -16,7 +16,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=8">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=8">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png?v=8">
-  <link rel="stylesheet" href="css/style.css?v=1.7.0">
+  <link rel="stylesheet" href="css/style.css?v=1.7.1">
 </head>
 <body class="theme-preto">
 
@@ -98,7 +98,7 @@
         <a href="#" id="authToggleModeLink" class="auth-link" onclick="event.preventDefault(); TruckAuth.setAuthMode(currentAuthMode === 'login' ? 'register' : 'login')">
           Não possui conta? Cadastre-se agora.
         </a>
-        <div class="auth-version">Versão <span class="app-version-tag">1.7.0</span></div>
+        <div class="auth-version">Versão <span class="app-version-tag">1.7.1</span></div>
       </div>
     </div>
   </div>
@@ -120,7 +120,7 @@
       <button type="button" id="btnEnterApp" class="btn-splash-enter" onclick="dismissSplash()">
         Acessar Checklist
       </button>
-      <p class="splash-version">Versão <span class="app-version-tag">1.7.0</span></p>
+      <p class="splash-version">Versão <span class="app-version-tag">1.7.1</span></p>
     </div>
   </div>
 
@@ -140,7 +140,7 @@
           <div id="connectionStatus" class="offline-pill">● Conectado</div>
           <button type="button" id="btnCheckUpdate" class="version-pill" title="Toque para verificar atualização" onclick="checkForUpdates(true)">
             <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span class="app-version-tag">v1.7.0</span>
+            <span class="app-version-tag">v1.7.1</span>
           </button>
         </div>
       </div>
@@ -578,17 +578,17 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- SCRIPTS -->
-  <script src="js/html2pdf.bundle.min.js?v=1.7.0"></script>
-  <script src="js/db.js?v=1.7.0"></script>
-  <script src="js/auth.js?v=1.7.0"></script>
-  <script src="js/app.js?v=1.7.0"></script>
-  <script src="js/update.js?v=1.7.0"></script>
+  <script src="js/html2pdf.bundle.min.js?v=1.7.1"></script>
+  <script src="js/db.js?v=1.7.1"></script>
+  <script src="js/auth.js?v=1.7.1"></script>
+  <script src="js/app.js?v=1.7.1"></script>
+  <script src="js/update.js?v=1.7.1"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js?v=1.7.0')
+        navigator.serviceWorker.register('sw.js?v=1.7.1')
           .then((reg) => {
             reg.update();
             console.log('Service Worker registrado:', reg.scope);
