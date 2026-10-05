@@ -1249,6 +1249,161 @@ function buildVideoCaption(chk, item, idx, total) {
   return cap;
 }
 
+// ==========================================
+// OTIMIZADOR DE VÍDEO (qualquer tamanho -> cabe no limite de compartilhamento)
+// ==========================================
+function pickRecorderMime() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  const candidates = [
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm'
+  ];
+  return candidates.find(t => MediaRecorder.isTypeSupported(t)) || null;
+}
+
+function showCompressOverlay(ctrl, total) {
+  hideCompressOverlay();
+  const ov = document.createElement('div');
+  ov.id = 'videoCompressOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(2,6,23,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;color:#e2e8f0;';
+  ov.innerHTML = `
+    <div style="font-size:2rem;">🎥</div>
+    <div id="vcoTitle" style="font-weight:800;font-size:1.05rem;">Otimizando vídeo para envio...</div>
+    <div style="width:100%;max-width:320px;height:12px;background:#1e293b;border-radius:8px;overflow:hidden;">
+      <div id="vcoBar" style="height:100%;width:0%;background:#22c55e;transition:width .3s;"></div>
+    </div>
+    <div id="vcoPct" style="font-size:0.95rem;font-weight:700;">0%</div>
+    <div style="font-size:0.82rem;color:#94a3b8;max-width:320px;">Mantenha o aplicativo aberto e a tela ligada. O vídeo é reduzido para caber no WhatsApp, igual ao envio pela galeria. (${total} vídeo(s) grande(s))</div>
+    <button type="button" id="vcoCancel" style="padding:10px 18px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:transparent;color:#cbd5e1;">Cancelar</button>`;
+  document.body.appendChild(ov);
+  document.getElementById('vcoCancel').onclick = () => { ctrl.canceled = true; if (ctrl.cancel) ctrl.cancel(); };
+}
+
+function updateCompressOverlay(idx, total, pct) {
+  const t = document.getElementById('vcoTitle');
+  const b = document.getElementById('vcoBar');
+  const p = document.getElementById('vcoPct');
+  if (t) t.textContent = `Otimizando vídeo ${idx} de ${total}...`;
+  const v = Math.max(0, Math.min(100, Math.round(pct * 100)));
+  if (b) b.style.width = v + '%';
+  if (p) p.textContent = v + '%';
+}
+
+function hideCompressOverlay() {
+  const ov = document.getElementById('videoCompressOverlay');
+  if (ov) ov.remove();
+}
+
+// Reencoda o vídeo (resolução máx. 1280 e bitrate calculado) via MediaRecorder.
+// Roda em tempo real (vídeo de 30s leva ~30s). Retorna File ou null se não suportado/cancelado.
+function compressVideoForShare(file, ctrl, onProgress) {
+  return new Promise((resolve) => {
+    const mime = pickRecorderMime();
+    if (!mime) { resolve(null); return; }
+
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src = url;
+    video.playsInline = true;
+    video.preload = 'auto';
+
+    let raf = 0, recorder = null, audioCtx = null, wakeLock = null, finished = false;
+
+    const cleanup = () => {
+      if (raf) cancelAnimationFrame(raf);
+      try { video.pause(); } catch (e) {}
+      try { URL.revokeObjectURL(url); } catch (e) {}
+      try { if (audioCtx) audioCtx.close(); } catch (e) {}
+      try { if (wakeLock) wakeLock.release(); } catch (e) {}
+    };
+    const finish = (result) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve(result);
+    };
+
+    video.onerror = () => finish(null);
+
+    video.onloadedmetadata = async () => {
+      try {
+        const dur = video.duration;
+        if (!isFinite(dur) || dur <= 0) { finish(null); return; }
+
+        const vw = video.videoWidth || 1280;
+        const vh = video.videoHeight || 720;
+        const scale = Math.min(1, 1280 / Math.max(vw, vh));
+        const w = Math.max(2, Math.round((vw * scale) / 2) * 2);
+        const h = Math.max(2, Math.round((vh * scale) / 2) * 2);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+
+        const targetBytes = 36 * 1024 * 1024;
+        const audioBps = 96000;
+        let vbps = Math.floor((targetBytes * 8 / dur) * 0.9 - audioBps);
+        vbps = Math.max(350000, Math.min(vbps, 3000000));
+
+        const stream = canvas.captureStream(30);
+        try {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          audioCtx = new AC();
+          const src = audioCtx.createMediaElementSource(video);
+          const dest = audioCtx.createMediaStreamDestination();
+          src.connect(dest);
+          dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+          if (audioCtx.state === 'suspended') await audioCtx.resume();
+        } catch (e) { /* segue sem áudio se não for possível capturar */ }
+
+        recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: vbps, audioBitsPerSecond: audioBps });
+        const chunks = [];
+        recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) chunks.push(ev.data); };
+        recorder.onstop = () => {
+          if (ctrl.canceled) { finish(null); return; }
+          const isMp4 = mime.indexOf('mp4') !== -1;
+          const ext = isMp4 ? 'mp4' : 'webm';
+          const baseName = (file.name || 'video').replace(/\.[^.]+$/, '');
+          const out = new File(chunks, `${baseName}_otimizado.${ext}`, {
+            type: isMp4 ? 'video/mp4' : 'video/webm',
+            lastModified: Date.now()
+          });
+          finish(out);
+        };
+
+        ctrl.cancel = () => {
+          try { if (recorder && recorder.state !== 'inactive') recorder.stop(); else finish(null); } catch (e) { finish(null); }
+        };
+
+        try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+
+        const draw = () => {
+          if (finished) return;
+          ctx.drawImage(video, 0, 0, w, h);
+          if (onProgress) onProgress(Math.min(1, video.currentTime / dur));
+          raf = requestAnimationFrame(draw);
+        };
+
+        video.onended = () => {
+          try { if (recorder.state !== 'inactive') recorder.stop(); } catch (e) { finish(null); }
+        };
+
+        recorder.start(1000);
+        await video.play();
+        draw();
+      } catch (err) {
+        console.warn('Falha ao otimizar vídeo:', err);
+        finish(null);
+      }
+    };
+  });
+}
+
 // O Chrome/Android só aceita até ~50 MB e 10 arquivos por compartilhamento.
 // Agrupamos fotos + vídeos em lotes que cabem nesse limite: o 1º lote leva o
 // relatório completo; os demais vão por uma barra de envio (1 toque por lote).
@@ -1288,6 +1443,40 @@ function explainShareFailure(batch) {
 }
 
 async function shareMediaWithReport({ title, text, photoFiles, videoFiles, chk }) {
+  // Vídeos acima do limite do navegador são otimizados (reduzidos) automaticamente
+  const oversize = videoFiles.filter(f => (f.size || 0) > SHARE_BATCH_MAX_BYTES);
+  if (oversize.length > 0) {
+    const ctrl = { canceled: false };
+    showCompressOverlay(ctrl, oversize.length);
+    let done = 0;
+    const optimized = [];
+    for (const f of videoFiles) {
+      if ((f.size || 0) <= SHARE_BATCH_MAX_BYTES) { optimized.push(f); continue; }
+      done++;
+      const out = await compressVideoForShare(f, ctrl, (p) => updateCompressOverlay(done, oversize.length, p));
+      if (ctrl.canceled) { hideCompressOverlay(); return 'aborted'; }
+      if (out) {
+        out.shareCaption = f.shareCaption;
+        optimized.push(out);
+      } else {
+        optimized.push(f);
+      }
+    }
+    hideCompressOverlay();
+    videoFiles = optimized;
+
+    // Depois de otimizar, o Android exige um novo toque do usuário para compartilhar
+    const newBatches = buildShareBatches(photoFiles, videoFiles);
+    const entries = newBatches.map((b, i) => ({
+      batch: b,
+      text: i === 0 ? text : batchCaption(b, i + 1, newBatches.length, chk)
+    }));
+    closeSharePreviewModal();
+    showToast('Vídeo otimizado! Toque em "Enviar agora" para abrir o WhatsApp.', 'success');
+    showVideoShareQueue(entries, title);
+    return 'sent';
+  }
+
   const batches = buildShareBatches(photoFiles, videoFiles);
   const canFiles = (files) => files.length > 0 && navigator.canShare && navigator.canShare({ files });
 
