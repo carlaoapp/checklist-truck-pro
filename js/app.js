@@ -1224,6 +1224,7 @@ async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
         const mime = m.mimeType || (m.blob && m.blob.type) || 'video/mp4';
         const videoMime = mime.includes('webm') ? 'video/mp4' : mime;
         const videoFile = new File([m.blob], filename, { type: videoMime, lastModified: m.timestamp || Date.now() });
+        videoFile.shareCaption = buildVideoCaption(chk, parentItem, videoFiles.length + 1, selectedMedias.filter(x => x.type === 'video').length);
         videoFiles.push(videoFile);
       }
     } catch (err) {
@@ -1232,6 +1233,111 @@ async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
   }
 
   return { photoFiles, videoFiles, allFiles: [...photoFiles, ...videoFiles] };
+}
+
+// Legenda curta com dados do checklist para cada vídeo enviado individualmente
+function buildVideoCaption(chk, item, idx, total) {
+  let status = '⚪ NÃO VERIFICADO';
+  if (item && item.status === 'ok') status = '🟢 CONFORME / OK';
+  else if (item && item.status === 'warn') status = '🟡 ATENÇÃO / ALERTA';
+  else if (item && item.status === 'danger') status = '🔴 DEFEITO / NÃO CONFORME';
+  let cap = `🎥 *Vídeo ${idx}/${total}* - ${item ? item.title : 'Item'}\n`;
+  cap += `Status: ${status}\n`;
+  if (item && item.note && item.note.trim()) cap += `Obs: ${item.note.trim()}\n`;
+  cap += `Placa: ${(chk.plateHorse || '---').toUpperCase()} | Motorista: ${chk.driverName || '---'}\n`;
+  cap += `Data/Hora: ${chk.inspectionDateTime || ''}`;
+  return cap;
+}
+
+// Envia fotos + relatório juntos e depois cada vídeo (arquivo real) com legenda.
+// O Android/WhatsApp recusa misturar fotos e vídeos numa mesma chamada, e cada
+// compartilhamento exige um toque do usuário; por isso os vídeos vão em fila.
+async function shareMediaWithReport({ title, text, photoFiles, videoFiles }) {
+  const canFiles = (files) => files.length > 0 && navigator.canShare && navigator.canShare({ files });
+  let group = [];
+  let queue = [];
+  if (photoFiles.length > 0) {
+    group = photoFiles;
+    queue = [...videoFiles];
+  } else if (videoFiles.length > 0) {
+    group = [videoFiles[0]];
+    queue = videoFiles.slice(1);
+  }
+
+  if (group.length > 0 && canFiles(group)) {
+    try {
+      await navigator.share({ title, text, files: group });
+      showToast('Relatório e mídias enviados!', 'success');
+      closeSharePreviewModal();
+      if (queue.length > 0) showVideoShareQueue(queue, title);
+      return 'sent';
+    } catch (err) {
+      if (err.name === 'AbortError') return 'aborted';
+      console.warn('Falha no WebShare com arquivos:', err);
+    }
+  }
+
+  // Aparelho não aceitou arquivos junto com o texto: envia o relatório como texto
+  // e libera todos os vídeos na fila de envio individual
+  if (navigator.canShare && navigator.canShare({ title, text })) {
+    try {
+      await navigator.share({ title, text });
+      closeSharePreviewModal();
+      const all = videoFiles.length > 0 ? videoFiles : [];
+      if (all.length > 0) showVideoShareQueue(all, title);
+      return 'sent';
+    } catch (err) {
+      if (err.name === 'AbortError') return 'aborted';
+    }
+  }
+  return 'failed';
+}
+
+// Barra fixa com botão para enviar cada vídeo restante (precisa de um toque por vídeo)
+function showVideoShareQueue(videos, title) {
+  const old = document.getElementById('videoShareQueueBar');
+  if (old) old.remove();
+
+  const queue = [...videos];
+  const total = queue.length;
+  const bar = document.createElement('div');
+  bar.id = 'videoShareQueueBar';
+  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:16px;z-index:99999;background:#0f172a;border:2px solid #38bdf8;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,0.6);';
+  document.body.appendChild(bar);
+
+  const render = () => {
+    if (queue.length === 0) {
+      bar.remove();
+      showToast('Todos os vídeos foram enviados!', 'success');
+      return;
+    }
+    bar.innerHTML = `
+      <div style="color:#e2e8f0;font-size:0.88rem;font-weight:700;">🎥 Falta enviar ${queue.length} de ${total} vídeo(s)</div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" id="btnSendNextVideo" style="flex:1;padding:12px;border:none;border-radius:10px;background:#047857;color:#fff;font-weight:700;font-size:0.95rem;">▶ Enviar vídeo ${total - queue.length + 1} de ${total}</button>
+        <button type="button" id="btnCloseVideoQueue" style="padding:12px;border:1px solid rgba(255,255,255,0.25);border-radius:10px;background:transparent;color:#cbd5e1;font-size:0.9rem;">Fechar</button>
+      </div>`;
+    document.getElementById('btnCloseVideoQueue').onclick = () => bar.remove();
+    document.getElementById('btnSendNextVideo').onclick = async () => {
+      const file = queue[0];
+      try {
+        const data = { title, text: file.shareCaption || '', files: [file] };
+        if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+          showToast('Este vídeo não pôde ser compartilhado pelo aparelho.', 'warning');
+          return;
+        }
+        await navigator.share(data);
+        queue.shift();
+        render();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.warn('Falha ao enviar vídeo:', err);
+          showToast('Falha ao enviar o vídeo. Tente novamente.', 'warning');
+        }
+      }
+    };
+  };
+  render();
 }
 
 // Compartilhamento individual de um único item do checklist direto no WhatsApp
@@ -1297,7 +1403,9 @@ async function shareIndividualItem(itemId) {
         const filename = `ITEM_${cleanPlate}_${cleanItemName}_Video_${i + 1}.${cleanExt}`;
         const mime = m.mimeType || (m.blob && m.blob.type) || 'video/mp4';
         const videoMime = mime.includes('webm') ? 'video/mp4' : mime;
-        videoFiles.push(new File([m.blob], filename, { type: videoMime, lastModified: m.timestamp || Date.now() }));
+        const itemVideoFile = new File([m.blob], filename, { type: videoMime, lastModified: m.timestamp || Date.now() });
+        itemVideoFile.shareCaption = buildVideoCaption(activeChecklist, item, videoFiles.length + 1, itemMedias.filter(x => x.type === 'video').length);
+        videoFiles.push(itemVideoFile);
       }
     }
 
@@ -1311,52 +1419,15 @@ async function shareIndividualItem(itemId) {
       }
     } catch (e) {}
 
-    // 1. Tenta compartilhar TODOS os arquivos juntos se o navegador aceitar
-    if (allFiles.length > 0 && navigator.canShare && navigator.canShare({ files: allFiles })) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: itemReport,
-          files: allFiles
-        });
-        showToast('Item com fotos e vídeos compartilhado com sucesso!', 'success');
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        console.warn('Falha no WebShare de todos os arquivos do item:', err);
-      }
-    }
-
-    // 2. Se o navegador não aceitar array misto, prioriza compartilhar os VÍDEOS com o relatório
-    if (videoFiles.length > 0 && navigator.canShare && navigator.canShare({ files: videoFiles })) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: itemReport,
-          files: videoFiles
-        });
-        showToast('Vídeo do item compartilhado com sucesso!', 'success');
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        console.warn('Falha no WebShare de vídeo do item:', err);
-      }
-    }
-
-    // 3. Se não houver vídeos, compartilha as FOTOS com o relatório
-    if (photoFiles.length > 0 && navigator.canShare && navigator.canShare({ files: photoFiles })) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: itemReport,
-          files: photoFiles
-        });
-        showToast('Fotos do item compartilhadas com sucesso!', 'success');
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        console.warn('Falha no WebShare de fotos do item:', err);
-      }
+    // 1. Fotos + relatório juntos; vídeos reais enviados em sequência com legenda
+    if (allFiles.length > 0) {
+      const result = await shareMediaWithReport({
+        title: shareTitle,
+        text: itemReport,
+        photoFiles,
+        videoFiles
+      });
+      if (result === 'sent' || result === 'aborted') return;
     }
 
     // 4. Se não houver mídias ou falhar, compartilha só o texto
@@ -1671,79 +1742,31 @@ async function executeShareReportDocument(targetMediaType = 'auto') {
       currentModalShareData.selectedItemIds
     );
 
-    let filesToShare = [];
+    let sendPhotos = photoFiles;
+    let sendVideos = videoFiles;
 
     if (targetMediaType === 'videos') {
       if (videoFiles.length === 0) {
         showToast('Nenhum vídeo anexado nos itens selecionados.', 'info');
         return;
       }
-      filesToShare = videoFiles;
+      sendPhotos = [];
     } else if (targetMediaType === 'photos') {
       if (photoFiles.length === 0) {
         showToast('Nenhuma foto anexada nos itens selecionados.', 'info');
         return;
       }
-      filesToShare = photoFiles;
-    } else {
-      // 'auto'
-      if (allFiles.length > 0 && navigator.canShare && navigator.canShare({ files: allFiles })) {
-        filesToShare = allFiles;
-      } else if (videoFiles.length > 0 && navigator.canShare && navigator.canShare({ files: videoFiles })) {
-        filesToShare = videoFiles;
-      } else if (photoFiles.length > 0 && navigator.canShare && navigator.canShare({ files: photoFiles })) {
-        filesToShare = photoFiles;
-      }
+      sendVideos = [];
     }
 
-    // 1. Tenta compartilhar arquivos selecionados com o texto do checklist via WebShare nativo
-    if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: text,
-          files: filesToShare
-        });
-        showToast('Checklist e mídias compartilhados com sucesso!', 'success');
-        closeSharePreviewModal();
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return; // Cancelado pelo usuário
-        console.warn('Falha no WebShare com arquivos:', err);
-      }
-    }
-
-    // 2. Se falhar com videos específicos, tenta com fotos
-    if (targetMediaType === 'auto' && photoFiles.length > 0 && navigator.canShare && navigator.canShare({ files: photoFiles })) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: text,
-          files: photoFiles
-        });
-        showToast('Fotos e checklist compartilhados com sucesso!', 'success');
-        closeSharePreviewModal();
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-      }
-    }
-
-    // 3. Se não houver mídias ou WebShare com arquivos falhar, tenta compartilhar só o texto
-    if (navigator.canShare && navigator.canShare({ title: shareTitle, text: text })) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: text
-        });
-        showToast('Checklist compartilhado com sucesso!', 'success');
-        closeSharePreviewModal();
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        console.warn('Falha no WebShare de texto:', err);
-      }
-    }
+    // Fotos + relatório juntos; vídeos reais enviados em sequência com legenda
+    const result = await shareMediaWithReport({
+      title: shareTitle,
+      text,
+      photoFiles: sendPhotos,
+      videoFiles: sendVideos
+    });
+    if (result === 'sent' || result === 'aborted') return;
 
     // 4. Fallback: Abre o WhatsApp diretamente com o texto do relatório (sem downloads indesejados)
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
