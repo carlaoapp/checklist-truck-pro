@@ -1349,6 +1349,13 @@ async function shareIndividualItem(itemId) {
 
     const shareTitle = `Apontamento - ${item.title} (${cleanPlate})`;
 
+    // Copia o relatório do item para o clipboard para garantia
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(itemReport);
+      }
+    } catch (e) {}
+
     // 1. Tenta compartilhamento nativo com mídias + texto
     if (shareFiles.length > 0 && navigator.canShare && navigator.canShare({ files: shareFiles })) {
       try {
