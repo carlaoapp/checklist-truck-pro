@@ -1508,6 +1508,27 @@ function toggleModalChecklistItem(itemId) {
   updateModalReportTextAndPreviews();
 }
 
+function toggleAllModalItemSelection() {
+  const chk = currentModalShareData.checklist;
+  if (!chk || !chk.items || chk.items.length === 0) return;
+
+  const allSelected = currentModalShareData.selectedItemIds.size === chk.items.length;
+  if (allSelected) {
+    currentModalShareData.selectedItemIds = new Set([chk.items[0].id]);
+    currentModalShareData.filterMode = 'custom';
+    updateFilterChipsUi('custom');
+    showToast('Selecione os itens que deseja incluir no relatório.', 'info');
+  } else {
+    currentModalShareData.selectedItemIds = new Set(chk.items.map(i => i.id));
+    currentModalShareData.filterMode = 'all';
+    updateFilterChipsUi('all');
+  }
+
+  renderModalShareItemList();
+  renderModalShareMediaThumbnails();
+  updateModalReportTextAndPreviews();
+}
+
 function renderModalShareItemList() {
   const container = document.getElementById('modalShareItemList');
   const countBadge = document.getElementById('modalShareItemCount');
@@ -1944,3 +1965,4 @@ window.shareReportViaWhatsApp = shareReportViaWhatsApp;
 window.shareIndividualItem = shareIndividualItem;
 window.setModalItemFilter = setModalItemFilter;
 window.toggleModalChecklistItem = toggleModalChecklistItem;
+window.toggleAllModalItemSelection = toggleAllModalItemSelection;
