@@ -1250,13 +1250,14 @@ function buildVideoCaption(chk, item, idx, total) {
 }
 
 // ==========================================
-// OTIMIZADOR DE VÍDEO (qualquer tamanho -> cabe no limite de compartilhamento)
+// ==========================================
+// OTIMIZADOR ULTRA-RÁPIDO DE VÍDEO (MP4 480p para WhatsApp)
 // ==========================================
 function pickRecorderMime() {
   if (typeof MediaRecorder === 'undefined') return null;
   const candidates = [
     'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4;codecs=avc1',
     'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
@@ -1269,18 +1270,21 @@ function showCompressOverlay(ctrl, total) {
   hideCompressOverlay();
   const ov = document.createElement('div');
   ov.id = 'videoCompressOverlay';
-  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(2,6,23,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;color:#e2e8f0;';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(2,6,23,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;color:#e2e8f0;backdrop-filter:blur(6px);';
   ov.innerHTML = `
-    <div style="font-size:2rem;">🎥</div>
-    <div id="vcoTitle" style="font-weight:800;font-size:1.05rem;">Otimizando vídeo para envio...</div>
-    <div style="width:100%;max-width:320px;height:12px;background:#1e293b;border-radius:8px;overflow:hidden;">
-      <div id="vcoBar" style="height:100%;width:0%;background:#22c55e;transition:width .3s;"></div>
+    <div style="font-size:2.4rem;animation:pulse 1.5s infinite;">🎥</div>
+    <div id="vcoTitle" style="font-weight:800;font-size:1.1rem;color:#38bdf8;">Otimizando vídeo para WhatsApp...</div>
+    <div style="width:100%;max-width:320px;height:12px;background:#1e293b;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);">
+      <div id="vcoBar" style="height:100%;width:0%;background:linear-gradient(90deg, #38bdf8, #22c55e);transition:width .2s;"></div>
     </div>
-    <div id="vcoPct" style="font-size:0.95rem;font-weight:700;">0%</div>
-    <div style="font-size:0.82rem;color:#94a3b8;max-width:320px;">Mantenha o aplicativo aberto e a tela ligada. O vídeo é reduzido para caber no WhatsApp, igual ao envio pela galeria. (${total} vídeo(s) grande(s))</div>
-    <button type="button" id="vcoCancel" style="padding:10px 18px;border-radius:10px;border:1px solid rgba(255,255,255,0.3);background:transparent;color:#cbd5e1;">Cancelar</button>`;
+    <div id="vcoPct" style="font-size:1rem;font-weight:700;color:#f8fafc;">0%</div>
+    <div style="font-size:0.82rem;color:#94a3b8;max-width:320px;line-height:1.4;">Reduzindo tamanho para envio rápido no WhatsApp mantendo alta nitidez. (${total} vídeo(s))</div>
+    <button type="button" id="vcoCancel" style="margin-top:8px;padding:8px 20px;border-radius:10px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#cbd5e1;font-size:0.85rem;">Cancelar</button>`;
   document.body.appendChild(ov);
-  document.getElementById('vcoCancel').onclick = () => { ctrl.canceled = true; if (ctrl.cancel) ctrl.cancel(); };
+  document.getElementById('vcoCancel').onclick = () => {
+    ctrl.canceled = true;
+    if (ctrl.cancel) ctrl.cancel();
+  };
 }
 
 function updateCompressOverlay(idx, total, pct) {
@@ -1298,163 +1302,306 @@ function hideCompressOverlay() {
   if (ov) ov.remove();
 }
 
-// Reencoda o vídeo (resolução máx. 1280 e bitrate calculado) via MediaRecorder.
-// Roda em tempo real (vídeo de 30s leva ~30s). Retorna File ou null se não suportado/cancelado.
-function compressVideoForShare(file, ctrl, onProgress) {
-  return new Promise((resolve) => {
-    const mime = pickRecorderMime();
-    if (!mime) { resolve(null); return; }
+// Otimiza vídeo para MP4 (H.264 Baseline, 480p, ~1.2Mbps)
+// Produz arquivos minúsculos (~4MB para 30s) aceitos 100% pelo WhatsApp
+async function compressVideoFast(file, ctrl, onProgress) {
+  // Se já for MP4 leve (<= 8MB), envia diretamente
+  if ((file.size || 0) <= 8 * 1024 * 1024 && (file.type === 'video/mp4' || (file.name && file.name.endsWith('.mp4')))) {
+    return file;
+  }
 
-    const url = URL.createObjectURL(file);
-    const video = document.createElement('video');
-    video.src = url;
-    video.playsInline = true;
-    video.preload = 'auto';
+  const url = URL.createObjectURL(file);
+  const video = document.createElement('video');
+  video.src = url;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
 
-    let raf = 0, recorder = null, audioCtx = null, wakeLock = null, finished = false;
+  // Aguarda leitura dos metadados
+  await new Promise((res) => {
+    video.onloadedmetadata = () => res();
+    video.onerror = () => res();
+    setTimeout(res, 4000);
+  });
 
-    const cleanup = () => {
-      if (raf) cancelAnimationFrame(raf);
-      try { video.pause(); } catch (e) {}
-      try { URL.revokeObjectURL(url); } catch (e) {}
-      try { if (audioCtx) audioCtx.close(); } catch (e) {}
-      try { if (wakeLock) wakeLock.release(); } catch (e) {}
-    };
-    const finish = (result) => {
-      if (finished) return;
-      finished = true;
-      cleanup();
-      resolve(result);
-    };
+  const duration = video.duration;
+  if (!isFinite(duration) || duration <= 0) {
+    URL.revokeObjectURL(url);
+    return file;
+  }
 
-    video.onerror = () => finish(null);
+  const vw = video.videoWidth || 1280;
+  const vh = video.videoHeight || 720;
 
-    video.onloadedmetadata = async () => {
-      try {
-        const dur = video.duration;
-        if (!isFinite(dur) || dur <= 0) { finish(null); return; }
+  // Escala para 480p mantendo proporção
+  const maxDim = 854;
+  let targetWidth = vw;
+  let targetHeight = vh;
+  if (targetWidth > maxDim || targetHeight > maxDim) {
+    if (targetWidth > targetHeight) {
+      targetHeight = Math.round((targetHeight * maxDim) / targetWidth);
+      targetWidth = maxDim;
+    } else {
+      targetWidth = Math.round((targetWidth * maxDim) / targetHeight);
+      targetHeight = maxDim;
+    }
+  }
+  targetWidth = Math.max(2, Math.floor(targetWidth / 2) * 2);
+  targetHeight = Math.max(2, Math.floor(targetHeight / 2) * 2);
 
-        const vw = video.videoWidth || 1280;
-        const vh = video.videoHeight || 720;
-        const scale = Math.min(1, 1280 / Math.max(vw, vh));
-        const w = Math.max(2, Math.round((vw * scale) / 2) * 2);
-        const h = Math.max(2, Math.round((vh * scale) / 2) * 2);
+  const baseName = (file.name || 'video').replace(/\.[^.]+$/, '');
+  const outFileName = `${baseName}_otimizado.mp4`;
+
+  // 1. MÉTODO PRINCIPAL: WebCodecs + Mp4Muxer (Ultra rápido com aceleração por hardware)
+  if (typeof window.VideoEncoder !== 'undefined' && typeof window.Mp4Muxer !== 'undefined') {
+    try {
+      const candidateCodecs = ['avc1.42001f', 'avc1.4d001f', 'avc1.64001f', 'avc1.42E01E'];
+      let chosenCodec = null;
+      for (const c of candidateCodecs) {
+        try {
+          const support = await VideoEncoder.isConfigSupported({
+            codec: c,
+            width: targetWidth,
+            height: targetHeight,
+            bitrate: 1200000,
+            framerate: 24
+          });
+          if (support && support.supported) {
+            chosenCodec = c;
+            break;
+          }
+        } catch (e) {}
+      }
+
+      if (chosenCodec) {
+        const target = new Mp4Muxer.ArrayBufferTarget();
+        const muxer = new Mp4Muxer.Muxer({
+          target,
+          video: {
+            codec: 'avc',
+            width: targetWidth,
+            height: targetHeight
+          },
+          fastStart: 'in-memory'
+        });
+
+        let encodeError = null;
+        const encoder = new VideoEncoder({
+          output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+          error: (e) => { encodeError = e; console.warn('Erro VideoEncoder:', e); }
+        });
+
+        encoder.configure({
+          codec: chosenCodec,
+          width: targetWidth,
+          height: targetHeight,
+          bitrate: 1200000,
+          framerate: 24,
+          avc: { format: 'avc' }
+        });
 
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 
-        const targetBytes = 36 * 1024 * 1024;
-        const audioBps = 96000;
-        let vbps = Math.floor((targetBytes * 8 / dur) * 0.9 - audioBps);
-        vbps = Math.max(350000, Math.min(vbps, 3000000));
+        const fps = 24;
+        const frameInterval = 1 / fps;
+        const totalFrames = Math.max(1, Math.floor(duration * fps));
+        const keyFrameInterval = fps * 2;
 
-        const stream = canvas.captureStream(30);
-        try {
-          const AC = window.AudioContext || window.webkitAudioContext;
-          audioCtx = new AC();
-          const src = audioCtx.createMediaElementSource(video);
-          const dest = audioCtx.createMediaStreamDestination();
-          src.connect(dest);
-          dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
-          if (audioCtx.state === 'suspended') await audioCtx.resume();
-        } catch (e) { /* segue sem áudio se não for possível capturar */ }
-
-        recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: vbps, audioBitsPerSecond: audioBps });
-        const chunks = [];
-        recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) chunks.push(ev.data); };
-        recorder.onstop = () => {
-          if (ctrl.canceled) { finish(null); return; }
-          const isMp4 = mime.indexOf('mp4') !== -1;
-          const ext = isMp4 ? 'mp4' : 'webm';
-          const baseName = (file.name || 'video').replace(/\.[^.]+$/, '');
-          const out = new File(chunks, `${baseName}_otimizado.${ext}`, {
-            type: isMp4 ? 'video/mp4' : 'video/webm',
-            lastModified: Date.now()
-          });
-          finish(out);
-        };
-
-        ctrl.cancel = () => {
-          try { if (recorder && recorder.state !== 'inactive') recorder.stop(); else finish(null); } catch (e) { finish(null); }
-        };
-
+        let wakeLock = null;
         try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
 
-        const draw = () => {
-          if (finished) return;
-          ctx.drawImage(video, 0, 0, w, h);
-          if (onProgress) onProgress(Math.min(1, video.currentTime / dur));
-          raf = requestAnimationFrame(draw);
-        };
+        const seekVideo = (t) => new Promise((res) => {
+          let timeout = null;
+          const onSeek = () => {
+            clearTimeout(timeout);
+            video.removeEventListener('seeked', onSeek);
+            res();
+          };
+          timeout = setTimeout(() => {
+            video.removeEventListener('seeked', onSeek);
+            res();
+          }, 350);
+          video.addEventListener('seeked', onSeek);
+          video.currentTime = Math.min(t, duration);
+        });
 
-        video.onended = () => {
-          try { if (recorder.state !== 'inactive') recorder.stop(); } catch (e) { finish(null); }
-        };
+        for (let i = 0; i < totalFrames; i++) {
+          if (ctrl && ctrl.canceled) break;
+          if (encodeError) break;
 
-        recorder.start(1000);
-        await video.play();
-        draw();
-      } catch (err) {
-        console.warn('Falha ao otimizar vídeo:', err);
-        finish(null);
+          const timeSec = i * frameInterval;
+          await seekVideo(timeSec);
+
+          ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+          const vFrame = new VideoFrame(canvas, {
+            timestamp: Math.round(timeSec * 1_000_000)
+          });
+          encoder.encode(vFrame, { keyFrame: (i % keyFrameInterval === 0) });
+          vFrame.close();
+
+          if (onProgress) onProgress((i + 1) / totalFrames);
+        }
+
+        try { if (wakeLock) await wakeLock.release(); } catch (e) {}
+
+        if (!encodeError && (!ctrl || !ctrl.canceled)) {
+          await encoder.flush();
+          muxer.finalize();
+          encoder.close();
+          URL.revokeObjectURL(url);
+
+          const resultBuffer = target.buffer;
+          if (resultBuffer && resultBuffer.byteLength > 0) {
+            return new File([resultBuffer], outFileName, {
+              type: 'video/mp4',
+              lastModified: Date.now()
+            });
+          }
+        }
       }
+    } catch (webcodecsErr) {
+      console.warn('WebCodecs falhou, tentando fallback MediaRecorder:', webcodecsErr);
+    }
+  }
+
+  // 2. MÉTODO FALLBACK: MediaRecorder com canvas
+  try {
+    const mime = pickRecorderMime();
+    if (!mime) {
+      URL.revokeObjectURL(url);
+      return file;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    const stream = canvas.captureStream(24);
+    const vbps = Math.max(400000, Math.min(1500000, Math.floor((10 * 1024 * 1024 * 8) / duration)));
+    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: vbps });
+
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+    const recPromise = new Promise((res) => {
+      recorder.onstop = () => {
+        const isMp4 = mime.includes('mp4');
+        const ext = isMp4 ? 'mp4' : 'webm';
+        const out = new File(chunks, `${baseName}_otimizado.${ext}`, {
+          type: isMp4 ? 'video/mp4' : 'video/webm',
+          lastModified: Date.now()
+        });
+        res(out);
+      };
+      recorder.onerror = () => res(file);
+    });
+
+    recorder.start(500);
+    video.playbackRate = 1.0;
+
+    let raf = 0;
+    const draw = () => {
+      if (video.paused || video.ended) return;
+      ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+      if (onProgress) onProgress(Math.min(1, video.currentTime / duration));
+      raf = requestAnimationFrame(draw);
     };
-  });
+
+    video.onended = () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (recorder.state !== 'inactive') recorder.stop();
+    };
+
+    await video.play();
+    draw();
+
+    const result = await recPromise;
+    URL.revokeObjectURL(url);
+    return result || file;
+  } catch (mrErr) {
+    console.warn('Fallback MediaRecorder falhou:', mrErr);
+    URL.revokeObjectURL(url);
+    return file;
+  }
 }
 
-// O Chrome/Android só aceita até ~50 MB e 10 arquivos por compartilhamento.
-// Agrupamos fotos + vídeos em lotes que cabem nesse limite: o 1º lote leva o
-// relatório completo; os demais vão por uma barra de envio (1 toque por lote).
-const SHARE_BATCH_MAX_BYTES = 45 * 1024 * 1024;
-const SHARE_BATCH_MAX_FILES = 10;
-
+// O Android WebShare NÃO aceita fotos e vídeos misturados no mesmo array.
+// Agrupamos fotos em lotes de até 10 fotos (máx. 30MB) e vídeos individualmente (1 por lote com sua legenda).
 function buildShareBatches(photoFiles, videoFiles) {
-  const ordered = [...photoFiles, ...videoFiles];
   const batches = [];
-  let cur = { files: [], bytes: 0 };
-  ordered.forEach(f => {
-    const size = f.size || 0;
-    if (cur.files.length > 0 && (cur.bytes + size > SHARE_BATCH_MAX_BYTES || cur.files.length >= SHARE_BATCH_MAX_FILES)) {
-      batches.push(cur);
-      cur = { files: [], bytes: 0 };
-    }
-    cur.files.push(f);
-    cur.bytes += size;
-  });
-  if (cur.files.length > 0) batches.push(cur);
+
+  // Lotes de Fotos
+  if (photoFiles && photoFiles.length > 0) {
+    let cur = { type: 'photos', files: [], bytes: 0 };
+    photoFiles.forEach(f => {
+      const size = f.size || 0;
+      if (cur.files.length >= 10 || (cur.bytes + size > 30 * 1024 * 1024 && cur.files.length > 0)) {
+        batches.push(cur);
+        cur = { type: 'photos', files: [], bytes: 0 };
+      }
+      cur.files.push(f);
+      cur.bytes += size;
+    });
+    if (cur.files.length > 0) batches.push(cur);
+  }
+
+  // Lotes de Vídeos (1 por lote para legenda dedicada no WhatsApp)
+  if (videoFiles && videoFiles.length > 0) {
+    videoFiles.forEach((vf, idx) => {
+      batches.push({
+        type: 'video',
+        files: [vf],
+        bytes: vf.size || 0,
+        videoIndex: idx + 1,
+        totalVideos: videoFiles.length,
+        shareCaption: vf.shareCaption
+      });
+    });
+  }
+
   return batches;
 }
 
 function batchCaption(batch, idx, total, chk) {
+  if (batch.shareCaption) return batch.shareCaption;
   const caps = batch.files.filter(f => f.shareCaption).map(f => f.shareCaption);
-  let t = `📎 *Mídias da vistoria ${idx}/${total}* - Placa ${((chk && chk.plateHorse) || '---').toUpperCase()}`;
+  let t = `📎 *Mídias da vistoria (${idx}/${total})* - Placa ${((chk && chk.plateHorse) || '---').toUpperCase()}`;
   if (caps.length > 0) t += `\n\n${caps.join('\n\n')}`;
   return t;
 }
 
 function explainShareFailure(batch) {
-  const big = batch.files.find(f => (f.size || 0) > 50 * 1024 * 1024);
+  const big = batch.files.find(f => (f.size || 0) > 40 * 1024 * 1024);
   if (big) {
-    return `O arquivo "${big.name}" tem ${(big.size / 1048576).toFixed(0)} MB e passa do limite de 50 MB do navegador para compartilhar.`;
+    return `O arquivo "${big.name}" tem ${(big.size / 1048576).toFixed(0)} MB e passa do limite do WhatsApp.`;
   }
-  return 'O aparelho recusou este lote de arquivos.';
+  return 'O aparelho não pôde processar o compartilhamento deste arquivo.';
 }
 
 async function shareMediaWithReport({ title, text, photoFiles, videoFiles, chk }) {
-  // Vídeos acima do limite do navegador são otimizados (reduzidos) automaticamente
-  const oversize = videoFiles.filter(f => (f.size || 0) > SHARE_BATCH_MAX_BYTES);
-  if (oversize.length > 0) {
+  // 1. Otimiza vídeos (reduz para MP4 480p se necessário)
+  const needsOptimize = videoFiles.filter(f => (f.size || 0) > 8 * 1024 * 1024 || !(f.name || '').endsWith('.mp4'));
+
+  if (needsOptimize.length > 0) {
     const ctrl = { canceled: false };
-    showCompressOverlay(ctrl, oversize.length);
+    showCompressOverlay(ctrl, needsOptimize.length);
     let done = 0;
     const optimized = [];
     for (const f of videoFiles) {
-      if ((f.size || 0) <= SHARE_BATCH_MAX_BYTES) { optimized.push(f); continue; }
+      if ((f.size || 0) <= 8 * 1024 * 1024 && (f.name || '').endsWith('.mp4')) {
+        optimized.push(f);
+        continue;
+      }
       done++;
-      const out = await compressVideoForShare(f, ctrl, (p) => updateCompressOverlay(done, oversize.length, p));
-      if (ctrl.canceled) { hideCompressOverlay(); return 'aborted'; }
+      const out = await compressVideoFast(f, ctrl, (p) => updateCompressOverlay(done, needsOptimize.length, p));
+      if (ctrl.canceled) {
+        hideCompressOverlay();
+        return 'aborted';
+      }
       if (out) {
         out.shareCaption = f.shareCaption;
         optimized.push(out);
@@ -1464,64 +1611,70 @@ async function shareMediaWithReport({ title, text, photoFiles, videoFiles, chk }
     }
     hideCompressOverlay();
     videoFiles = optimized;
-
-    // Depois de otimizar, o Android exige um novo toque do usuário para compartilhar
-    const newBatches = buildShareBatches(photoFiles, videoFiles);
-    const entries = newBatches.map((b, i) => ({
-      batch: b,
-      text: i === 0 ? text : batchCaption(b, i + 1, newBatches.length, chk)
-    }));
-    closeSharePreviewModal();
-    showToast('Vídeo otimizado! Toque em "Enviar agora" para abrir o WhatsApp.', 'success');
-    showVideoShareQueue(entries, title);
-    return 'sent';
   }
 
   const batches = buildShareBatches(photoFiles, videoFiles);
-  const canFiles = (files) => files.length > 0 && navigator.canShare && navigator.canShare({ files });
+  if (batches.length === 0) return 'failed';
 
-  if (batches.length > 0 && canFiles(batches[0].files)) {
+  const firstBatch = batches[0];
+  const canShareFiles = (files) => files && files.length > 0 && navigator.canShare && navigator.canShare({ files });
+
+  const firstBatchText = firstBatch.type === 'photos'
+    ? text
+    : (photoFiles.length === 0 ? (firstBatch.shareCaption || text) : (firstBatch.shareCaption || text));
+
+  if (canShareFiles(firstBatch.files)) {
     try {
-      await navigator.share({ title, text, files: batches[0].files });
+      await navigator.share({
+        title,
+        text: firstBatchText,
+        files: firstBatch.files
+      });
       closeSharePreviewModal();
-      const rest = batches.slice(1).map((b, i) => ({
-        batch: b,
-        text: batchCaption(b, i + 2, batches.length, chk)
-      }));
-      if (rest.length > 0) {
-        showToast('Relatório enviado! Falta enviar o restante das mídias.', 'info');
-        showVideoShareQueue(rest, title);
+
+      const remainingBatches = batches.slice(1);
+      if (remainingBatches.length > 0) {
+        const queueEntries = remainingBatches.map((b, i) => ({
+          batch: b,
+          title,
+          text: b.shareCaption || batchCaption(b, i + 2, batches.length, chk)
+        }));
+        showToast('Primeiro envio realizado! Envie os próximos itens na barra abaixo.', 'info');
+        showVideoShareQueue(queueEntries, title);
       } else {
-        showToast('Relatório e mídias enviados!', 'success');
+        showToast('Relatório e mídias compartilhados com sucesso!', 'success');
       }
       return 'sent';
     } catch (err) {
       if (err.name === 'AbortError') return 'aborted';
-      console.warn('Falha no WebShare com arquivos:', err);
+      console.warn('WebShare com arquivos falhou:', err);
     }
   }
 
-  // Primeiro lote recusado: envia o relatório como texto e libera TODOS os lotes na fila
+  // Fallback: Compartilha texto do relatório e libera mídias na fila
   if (navigator.canShare && navigator.canShare({ title, text })) {
     try {
       await navigator.share({ title, text });
       closeSharePreviewModal();
       if (batches.length > 0) {
-        showToast('Relatório enviado. ' + explainShareFailure(batches[0]), 'warning');
-        showVideoShareQueue(batches.map((b, i) => ({
+        const queueEntries = batches.map((b, i) => ({
           batch: b,
-          text: batchCaption(b, i + 1, batches.length, chk)
-        })), title);
+          title,
+          text: b.shareCaption || batchCaption(b, i + 1, batches.length, chk)
+        }));
+        showToast('Relatório enviado como texto. Toque em "Enviar agora" para as fotos/vídeos.', 'warning');
+        showVideoShareQueue(queueEntries, title);
       }
       return 'sent';
     } catch (err) {
       if (err.name === 'AbortError') return 'aborted';
     }
   }
+
   return 'failed';
 }
 
-// Barra fixa com botão para enviar cada lote restante (precisa de um toque por lote)
+// Barra fixa com botão para enviar cada mídia restante (1 toque por item)
 function showVideoShareQueue(entries, title) {
   const old = document.getElementById('videoShareQueueBar');
   if (old) old.remove();
@@ -1530,23 +1683,26 @@ function showVideoShareQueue(entries, title) {
   const total = queue.length;
   const bar = document.createElement('div');
   bar.id = 'videoShareQueueBar';
-  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:16px;z-index:99999;background:#0f172a;border:2px solid #38bdf8;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,0.6);';
+  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:16px;z-index:99999;background:#0f172a;border:2px solid #38bdf8;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,0.7);';
   document.body.appendChild(bar);
 
   const render = () => {
     if (queue.length === 0) {
       bar.remove();
-      showToast('Todas as mídias foram enviadas!', 'success');
+      showToast('Todas as mídias foram enviadas com sucesso!', 'success');
       return;
     }
     const cur = queue[0];
-    const nVid = cur.batch.files.filter(f => (f.type || '').startsWith('video')).length;
-    const nImg = cur.batch.files.length - nVid;
+    const isVideo = cur.batch.type === 'video';
+    const label = isVideo
+      ? `🎥 Vídeo ${cur.batch.videoIndex || 1} de ${cur.batch.totalVideos || 1}`
+      : `📷 Lote de ${cur.batch.files.length} foto(s)`;
+
     bar.innerHTML = `
-      <div style="color:#e2e8f0;font-size:0.88rem;font-weight:700;">📎 Falta enviar ${queue.length} de ${total} grupo(s) de mídia</div>
-      <div style="color:#94a3b8;font-size:0.8rem;">Próximo: ${nImg} foto(s) e ${nVid} vídeo(s)</div>
+      <div style="color:#e2e8f0;font-size:0.88rem;font-weight:700;">📎 Faltam enviar ${queue.length} item(ns) da vistoria</div>
+      <div style="color:#38bdf8;font-size:0.82rem;font-weight:600;">Próximo: ${label}</div>
       <div style="display:flex;gap:8px;">
-        <button type="button" id="btnSendNextVideo" style="flex:1;padding:12px;border:none;border-radius:10px;background:#047857;color:#fff;font-weight:700;font-size:0.95rem;">▶ Enviar agora</button>
+        <button type="button" id="btnSendNextVideo" style="flex:1;padding:12px;border:none;border-radius:10px;background:#047857;color:#fff;font-weight:700;font-size:0.95rem;box-shadow:0 2px 8px rgba(4,120,87,0.4);">▶ Enviar agora no WhatsApp</button>
         <button type="button" id="btnCloseVideoQueue" style="padding:12px;border:1px solid rgba(255,255,255,0.25);border-radius:10px;background:transparent;color:#cbd5e1;font-size:0.9rem;">Fechar</button>
       </div>`;
     document.getElementById('btnCloseVideoQueue').onclick = () => bar.remove();
@@ -1557,12 +1713,12 @@ function showVideoShareQueue(entries, title) {
           showToast(explainShareFailure(cur.batch), 'warning');
           return;
         }
-        await navigator.share({ title, text: cur.text, files });
+        await navigator.share({ title: cur.title || title, text: cur.text, files });
         queue.shift();
         render();
       } catch (err) {
         if (err.name !== 'AbortError') {
-          console.warn('Falha ao enviar mídias:', err);
+          console.warn('Falha ao enviar mídia:', err);
           showToast('Falha ao enviar: ' + (err.message || err.name), 'warning');
         }
       }
