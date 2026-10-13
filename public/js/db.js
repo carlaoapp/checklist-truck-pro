@@ -298,6 +298,19 @@ async function getAllUsers() {
   });
 }
 
+async function updateUser(user) {
+  if (!user || !user.id) return null;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_USERS], 'readwrite');
+    const store = transaction.objectStore(STORE_USERS);
+    const request = store.put(user);
+
+    request.onsuccess = () => resolve(user);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
 // Expõe no escopo global
 window.TruckDB = {
   openDB,
@@ -312,6 +325,7 @@ window.TruckDB = {
   updateMediaRecord,
   deleteMediaRecord,
   createUser,
+  updateUser,
   getUserByEmail,
   getUserById,
   getAllUsers

@@ -16,7 +16,7 @@
   <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png?v=8">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=8">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png?v=8">
-  <link rel="stylesheet" href="css/style.css?v=1.9.0">
+  <link rel="stylesheet" href="css/style.css?v=1.10.0">
 </head>
 <body class="theme-preto">
 
@@ -55,6 +55,8 @@
         <div class="form-group">
           <label for="authEmail">E-mail ou Usuário:</label>
           <input type="email" id="authEmail" class="input-control" placeholder="seu-email@empresa.com" required autocomplete="username">
+          <!-- Sugestão de Contas Salvas no Aparelho -->
+          <div id="authSavedAccountsHint" class="auth-saved-accounts" style="display: none;"></div>
         </div>
 
         <!-- Campo Senha com Olho -->
@@ -79,12 +81,15 @@
           </div>
         </div>
 
-        <!-- Lembrar-me -->
+        <!-- Lembrar-me e Esqueci a Senha -->
         <div class="auth-remember-row">
           <label class="custom-checkbox-label" style="font-size: 0.85rem;">
             <input type="checkbox" id="authRemember" checked>
-            <span>Lembrar-me neste aparelho</span>
+            <span>Lembrar-me</span>
           </label>
+          <a href="#" id="authLinkForgot" class="auth-link-forgot" onclick="event.preventDefault(); TruckAuth.abrirModalEsqueciSenha();">
+            Esqueci a senha
+          </a>
         </div>
 
         <!-- Botão Ação -->
@@ -98,7 +103,125 @@
         <a href="#" id="authToggleModeLink" class="auth-link" onclick="event.preventDefault(); TruckAuth.setAuthMode(currentAuthMode === 'login' ? 'register' : 'login')">
           Não possui conta? Cadastre-se agora.
         </a>
-        <div class="auth-version">Versão <span class="app-version-tag">1.9.0</span></div>
+        <div class="auth-version">Versão <span class="app-version-tag">1.10.0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: RECUPERAÇÃO DE SENHA (ESQUECI A SENHA) -->
+  <div id="modalEsqueciSenha" class="auth-modal" style="display: none;">
+    <div class="auth-card esqueci-card">
+      <div class="auth-header">
+        <div class="auth-icon-wrap" style="border-color: rgba(56, 189, 248, 0.4);">
+          <img src="icons/icon-192.png" alt="Logo Truck Pro" class="auth-logo-img">
+        </div>
+        <h2 class="auth-title">Recuperar Senha</h2>
+        <p id="esqueciPassoDesc" class="esqueci-passo-desc">Informe seu e-mail cadastrado para enviarmos o código de verificação.</p>
+      </div>
+
+      <!-- Alerta de Sucesso / Erro -->
+      <div id="esqueciAlertaMsg" class="esqueci-alerta"></div>
+
+      <!-- PASSO 1: Solicitar Código -->
+      <div id="esqueciPasso1">
+        <div class="form-group">
+          <label for="esqueciEmail">Seu E-mail Cadastrado:</label>
+          <input type="email" id="esqueciEmail" class="input-control" placeholder="seu-email@empresa.com" autocomplete="email">
+        </div>
+
+        <button type="button" id="btnEnviarCodigo" class="btn-action-save" style="width: 100%; margin-top: 10px;" onclick="TruckAuth.solicitarCodigoRecuperacao()">
+          <span>Enviar Código para o E-mail</span>
+        </button>
+
+        <button type="button" class="btn-secondary" style="width: 100%; margin-top: 8px; justify-content: center;" onclick="TruckAuth.fecharModalEsqueciSenha()">
+          Voltar para o Login
+        </button>
+      </div>
+
+      <!-- PASSO 2: Validar Código e Redefinir Senha -->
+      <div id="esqueciPasso2" style="display: none;">
+        <!-- Caixa com código gerado para acesso imediato sem bloqueio -->
+        <div id="esqueciCodeBox" class="esqueci-code-box" style="display: none;">
+          <div class="esqueci-code-label">Código de Verificação Gerado</div>
+          <div id="esqueciCodeDisplay" class="esqueci-code-display">------</div>
+          <button type="button" id="btnQuickFillCode" class="esqueci-btn-quick-fill" onclick="TruckAuth.preencherCodigoEsqueci()">
+            ✓ Preencher Código Automaticamente
+          </button>
+        </div>
+
+        <div class="form-group">
+          <label for="esqueciCodigo">Código de Verificação (6 dígitos):</label>
+          <input type="text" id="esqueciCodigo" class="input-control" placeholder="Ex: 123456" maxlength="6" inputmode="numeric" style="font-size: 1.1rem; letter-spacing: 3px; font-weight: 700; text-align: center;">
+        </div>
+
+        <div class="form-group">
+          <label for="esqueciNovaSenha">Nova Senha:</label>
+          <div class="password-input-wrap">
+            <input type="password" id="esqueciNovaSenha" class="input-control input-password" placeholder="Mínimo 4 caracteres" autocomplete="new-password">
+            <button type="button" class="btn-toggle-eye" onclick="TruckAuth.togglePasswordVisibility('esqueciNovaSenha', this)">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="esqueciConfirmaSenha">Confirmar Nova Senha:</label>
+          <div class="password-input-wrap">
+            <input type="password" id="esqueciConfirmaSenha" class="input-control input-password" placeholder="Repita a nova senha" autocomplete="new-password">
+            <button type="button" class="btn-toggle-eye" onclick="TruckAuth.togglePasswordVisibility('esqueciConfirmaSenha', this)">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="btnSalvarSenha" class="btn-action-save" style="width: 100%; margin-top: 10px;" onclick="TruckAuth.confirmarNovaSenha()">
+          <span>Salvar Nova Senha</span>
+        </button>
+
+        <button type="button" class="btn-secondary" style="width: 100%; margin-top: 8px; justify-content: center;" onclick="TruckAuth.voltarPasso1Esqueci()">
+          Voltar ao Passo Anterior
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: MEU USUÁRIO / PERFIL DO MOTORISTA -->
+  <div id="modalMeuPerfil" class="auth-modal" style="display: none;">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-icon-wrap" style="border-color: rgba(34, 197, 94, 0.4);">
+          <img src="icons/icon-192.png" alt="Logo Truck Pro" class="auth-logo-img">
+        </div>
+        <h2 class="auth-title">Meu Usuário</h2>
+        <p class="auth-subtitle">Informações da Conta do Motorista</p>
+      </div>
+
+      <div class="profile-info-card">
+        <div class="profile-info-row">
+          <span class="profile-info-label">Motorista:</span>
+          <span id="perfilNome" class="profile-info-value">---</span>
+        </div>
+        <div class="profile-info-row">
+          <span class="profile-info-label">E-mail / Login:</span>
+          <span id="perfilEmail" class="profile-info-value">---</span>
+        </div>
+        <div class="profile-info-row">
+          <span class="profile-info-label">Cadastrado em:</span>
+          <span id="perfilData" class="profile-info-value">---</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button type="button" class="btn-secondary" style="justify-content: center; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);" onclick="TruckAuth.abrirAlterarSenhaDoPerfil()">
+          🔑 Alterar Minha Senha
+        </button>
+        <button type="button" class="btn-secondary" style="justify-content: center; color: #f87171; border-color: rgba(239, 68, 68, 0.4);" onclick="TruckAuth.logout()">
+          🚪 Sair desta Conta
+        </button>
+        <button type="button" class="btn-secondary" style="justify-content: center;" onclick="TruckAuth.fecharModalMeuPerfil()">
+          Fechar
+        </button>
       </div>
     </div>
   </div>
@@ -120,7 +243,7 @@
       <button type="button" id="btnEnterApp" class="btn-splash-enter" onclick="dismissSplash()">
         Acessar Checklist
       </button>
-      <p class="splash-version">Versão <span class="app-version-tag">1.9.0</span></p>
+      <p class="splash-version">Versão <span class="app-version-tag">1.10.0</span></p>
     </div>
   </div>
 
@@ -140,7 +263,7 @@
           <div id="connectionStatus" class="offline-pill">● Conectado</div>
           <button type="button" id="btnCheckUpdate" class="version-pill" title="Toque para verificar atualização" onclick="checkForUpdates(true)">
             <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span class="app-version-tag">v1.9.0</span>
+            <span class="app-version-tag">v1.10.0</span>
           </button>
         </div>
       </div>
@@ -149,7 +272,7 @@
       <div class="header-actions">
         <!-- Usuário Ativo com E-mail e Botão Sair integrado -->
         <div id="currentUserDisplay" class="user-pill" style="display: none;">
-          <div class="user-pill-info" title="E-mail do motorista logado">
+          <div class="user-pill-info" title="Toque para ver seus dados de usuário" onclick="TruckAuth.abrirModalMeuPerfil()" style="cursor: pointer;">
             <svg class="ui-icon user-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <span id="currentUserEmail" class="user-email-text">motorista@truckpro.com</span>
           </div>
@@ -578,18 +701,18 @@
   <div id="toastContainer" class="toast-container"></div>
 
   <!-- SCRIPTS -->
-  <script src="js/html2pdf.bundle.min.js?v=1.9.0"></script>
-  <script src="js/mp4-muxer.js?v=1.9.0"></script>
-  <script src="js/db.js?v=1.9.0"></script>
-  <script src="js/auth.js?v=1.9.0"></script>
-  <script src="js/app.js?v=1.9.0"></script>
-  <script src="js/update.js?v=1.9.0"></script>
+  <script src="js/html2pdf.bundle.min.js?v=1.10.0"></script>
+  <script src="js/mp4-muxer.js?v=1.10.0"></script>
+  <script src="js/db.js?v=1.10.0"></script>
+  <script src="js/auth.js?v=1.10.0"></script>
+  <script src="js/app.js?v=1.10.0"></script>
+  <script src="js/update.js?v=1.10.0"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js?v=1.9.0')
+        navigator.serviceWorker.register('sw.js?v=1.10.0')
           .then((reg) => {
             reg.update();
             console.log('Service Worker registrado:', reg.scope);

@@ -71,6 +71,16 @@ async function initAuth() {
     if (authContainer) {
       authContainer.style.display = 'flex';
       setAuthMode('login');
+
+      // Exibe contas cadastradas neste aparelho para login com 1 toque
+      await renderSavedAccountsHint();
+
+      // Preenche o último e-mail lembrado se houver
+      const lastEmail = localStorage.getItem('truck_last_email');
+      const emailInput = document.getElementById('authEmail');
+      if (lastEmail && emailInput && !emailInput.value) {
+        emailInput.value = lastEmail;
+      }
     }
     // Fecha tela de splash mais rapidamente se precisar fazer login
     dismissSplash();
@@ -252,6 +262,7 @@ async function handleAuthSubmit() {
       await window.TruckDB.createUser(newUser);
       const token = `truck_token_${Date.now()}`;
       saveAuthSession(token, newUser, remember);
+      localStorage.setItem('truck_last_email', email.toLowerCase());
 
       updateUserInterface(newUser);
       document.getElementById('authContainer').style.display = 'none';
@@ -276,6 +287,7 @@ async function handleAuthSubmit() {
 
       const token = `truck_token_${Date.now()}`;
       saveAuthSession(token, user, remember);
+      localStorage.setItem('truck_last_email', email.toLowerCase());
 
       updateUserInterface(user);
       document.getElementById('authContainer').style.display = 'none';
@@ -299,6 +311,342 @@ async function handleAuthSubmit() {
 }
 
 // ==========================================
+// SUGESTÃO DE CONTAS SALVAS NESTE APARELHO
+// ==========================================
+async function renderSavedAccountsHint() {
+  const container = document.getElementById('authSavedAccountsHint');
+  if (!container) return;
+  try {
+    const users = await window.TruckDB.getAllUsers();
+    if (!users || users.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+    container.innerHTML = `
+      <div class="auth-saved-accounts-title">
+        <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Contas salvas neste aparelho (toque para preencher):</span>
+      </div>
+      <div class="auth-saved-accounts-list">
+        ${users.map(u => `
+          <button type="button" class="auth-account-chip" onclick="TruckAuth.preencherEmailLogin('${escapeHtml(u.email)}')">
+            <span>👤 ${escapeHtml(u.email)}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+    container.style.display = 'block';
+  } catch (e) {
+    console.warn('Erro ao carregar contas salvas:', e);
+  }
+}
+
+function preencherEmailLogin(email) {
+  const emailInput = document.getElementById('authEmail');
+  const pwdInput = document.getElementById('authPassword');
+  if (emailInput) {
+    emailInput.value = email;
+  }
+  if (pwdInput) {
+    pwdInput.focus();
+  }
+}
+
+// ==========================================
+// RECUPERAÇÃO DE SENHA (ESQUECI A SENHA)
+// ==========================================
+let currentResetCode = null;
+
+function abrirModalEsqueciSenha() {
+  const modal = document.getElementById('modalEsqueciSenha');
+  const authEmail = document.getElementById('authEmail');
+  const esqueciEmail = document.getElementById('esqueciEmail');
+  const alerta = document.getElementById('esqueciAlertaMsg');
+
+  if (alerta) alerta.style.display = 'none';
+  if (authEmail && esqueciEmail && authEmail.value) {
+    esqueciEmail.value = authEmail.value.trim();
+  }
+  voltarPasso1Esqueci();
+  if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalEsqueciSenha() {
+  const modal = document.getElementById('modalEsqueciSenha');
+  if (modal) modal.style.display = 'none';
+}
+
+function voltarPasso1Esqueci() {
+  const passo1 = document.getElementById('esqueciPasso1');
+  const passo2 = document.getElementById('esqueciPasso2');
+  const desc = document.getElementById('esqueciPassoDesc');
+  const alerta = document.getElementById('esqueciAlertaMsg');
+  const codeBox = document.getElementById('esqueciCodeBox');
+
+  if (passo1) passo1.style.display = 'block';
+  if (passo2) passo2.style.display = 'none';
+  if (desc) desc.textContent = 'Informe seu e-mail cadastrado para enviarmos o código de verificação.';
+  if (alerta) alerta.style.display = 'none';
+  if (codeBox) codeBox.style.display = 'none';
+}
+
+async function solicitarCodigoRecuperacao() {
+  const emailInput = document.getElementById('esqueciEmail');
+  const btn = document.getElementById('btnEnviarCodigo');
+  const alerta = document.getElementById('esqueciAlertaMsg');
+  const passo1 = document.getElementById('esqueciPasso1');
+  const passo2 = document.getElementById('esqueciPasso2');
+  const desc = document.getElementById('esqueciPassoDesc');
+  const codeBox = document.getElementById('esqueciCodeBox');
+  const codeDisplay = document.getElementById('esqueciCodeDisplay');
+  const codigoInput = document.getElementById('esqueciCodigo');
+
+  const email = (emailInput ? emailInput.value : '').toLowerCase().trim();
+  if (!email) {
+    if (alerta) {
+      alerta.style.display = 'block';
+      alerta.style.background = 'rgba(239, 68, 68, 0.15)';
+      alerta.style.color = '#fca5a5';
+      alerta.style.border = '1px solid #ef4444';
+      alerta.textContent = 'Por favor, digite seu e-mail cadastrado.';
+    }
+    return;
+  }
+
+  // Verifica se o usuário existe no banco
+  const user = await window.TruckDB.getUserByEmail(email);
+  if (!user) {
+    if (alerta) {
+      alerta.style.display = 'block';
+      alerta.style.background = 'rgba(239, 68, 68, 0.15)';
+      alerta.style.color = '#fca5a5';
+      alerta.style.border = '1px solid #ef4444';
+      alerta.textContent = 'E-mail não encontrado no sistema. Verifique o endereço digitado ou crie uma conta.';
+    }
+    return;
+  }
+
+  // Gera código de 6 dígitos aleatório
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  currentResetCode = code;
+  const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutos
+
+  localStorage.setItem('truck_pwd_reset', JSON.stringify({ email, code, expiresAt }));
+
+  // Disparo de e-mail:
+  // 1. Notifica API backend se estiver online
+  try {
+    fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    }).catch(() => {});
+  } catch (e) {}
+
+  // 2. Prepara link mailto para abrir aplicativo de e-mail do motorista
+  const subject = encodeURIComponent('Código de Recuperação de Senha - Checklist Truck Pro');
+  const body = encodeURIComponent(
+    `Olá, ${user.name}!\n\nSeu código de verificação para redefinir sua senha no Checklist Truck Pro é: ${code}\n\nEste código é válido por 15 minutos.\n\nSe você não solicitou a redefinição, basta ignorar esta mensagem.`
+  );
+  const mailtoUrl = `mailto:${email}?subject=${subject}&body=${body}`;
+
+  // Avança para o Passo 2
+  if (passo1) passo1.style.display = 'none';
+  if (passo2) passo2.style.display = 'block';
+  if (desc) desc.textContent = `Digite o código de 6 dígitos enviado para ${email} e defina sua nova senha.`;
+
+  if (codeBox && codeDisplay) {
+    codeDisplay.textContent = code;
+    codeBox.style.display = 'block';
+  }
+
+  if (alerta) {
+    alerta.style.display = 'block';
+    alerta.style.background = 'rgba(16, 185, 129, 0.15)';
+    alerta.style.color = '#6ee7b7';
+    alerta.style.border = '1px solid #10b981';
+    alerta.innerHTML = `
+      <div>✅ Código gerado com sucesso para <strong>${escapeHtml(email)}</strong>!</div>
+      <div style="margin-top: 8px;">
+        <a href="${mailtoUrl}" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; color: #38bdf8; text-decoration: underline; font-weight: 700;">
+          📧 Abrir Aplicativo de E-mail
+        </a>
+      </div>
+    `;
+  }
+
+  if (codigoInput) {
+    codigoInput.value = '';
+    codigoInput.focus();
+  }
+}
+
+function preencherCodigoEsqueci() {
+  const codigoInput = document.getElementById('esqueciCodigo');
+  const pwdInput = document.getElementById('esqueciNovaSenha');
+  if (currentResetCode && codigoInput) {
+    codigoInput.value = currentResetCode;
+  } else {
+    try {
+      const saved = JSON.parse(localStorage.getItem('truck_pwd_reset') || '{}');
+      if (saved.code && codigoInput) codigoInput.value = saved.code;
+    } catch (e) {}
+  }
+  if (pwdInput) pwdInput.focus();
+}
+
+async function confirmarNovaSenha() {
+  const emailInput = document.getElementById('esqueciEmail');
+  const codigoInput = document.getElementById('esqueciCodigo');
+  const novaSenhaInput = document.getElementById('esqueciNovaSenha');
+  const confirmaSenhaInput = document.getElementById('esqueciConfirmaSenha');
+  const btn = document.getElementById('btnSalvarSenha');
+  const alerta = document.getElementById('esqueciAlertaMsg');
+
+  const email = (emailInput ? emailInput.value : '').toLowerCase().trim();
+  const code = (codigoInput ? codigoInput.value : '').trim();
+  const newPassword = novaSenhaInput ? novaSenhaInput.value : '';
+  const confirmPassword = confirmaSenhaInput ? confirmaSenhaInput.value : '';
+
+  const showStep2Error = (msg) => {
+    if (alerta) {
+      alerta.style.display = 'block';
+      alerta.style.background = 'rgba(239, 68, 68, 0.15)';
+      alerta.style.color = '#fca5a5';
+      alerta.style.border = '1px solid #ef4444';
+      alerta.textContent = msg;
+    }
+  };
+
+  if (!code || !newPassword) {
+    showStep2Error('Por favor, informe o código de verificação e a nova senha.');
+    return;
+  }
+
+  if (newPassword.length < 4) {
+    showStep2Error('A nova senha deve ter no mínimo 4 caracteres.');
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    showStep2Error('As senhas digitadas não coincidem. Digite a mesma senha nos dois campos.');
+    return;
+  }
+
+  // Valida o código
+  let resetData = null;
+  try {
+    resetData = JSON.parse(localStorage.getItem('truck_pwd_reset') || '{}');
+  } catch (e) {}
+
+  if (!resetData || resetData.email !== email || resetData.code !== code) {
+    showStep2Error('Código de verificação incorreto. Verifique o número digitado.');
+    return;
+  }
+
+  if (Date.now() > (resetData.expiresAt || 0)) {
+    showStep2Error('Este código de verificação expirou (validade de 15 minutos). Solicite um novo código.');
+    return;
+  }
+
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span>Salvando nova senha...</span>`;
+    }
+
+    const user = await window.TruckDB.getUserByEmail(email);
+    if (!user) {
+      showStep2Error('Usuário não encontrado.');
+      if (btn) { btn.disabled = false; btn.innerHTML = `<span>Salvar Nova Senha</span>`; }
+      return;
+    }
+
+    const newHash = await hashPassword(newPassword);
+    user.passwordHash = newHash;
+    await window.TruckDB.updateUser(user);
+
+    // Limpa requisição de reset
+    localStorage.removeItem('truck_pwd_reset');
+    currentResetCode = null;
+
+    // Sucesso!
+    if (alerta) {
+      alerta.style.display = 'block';
+      alerta.style.background = 'rgba(16, 185, 129, 0.15)';
+      alerta.style.color = '#6ee7b7';
+      alerta.style.border = '1px solid #10b981';
+      alerta.textContent = '✅ Senha alterada com sucesso! Redirecionando para o login...';
+    }
+
+    // Preenche o formulário de login com as novas credenciais
+    const authEmail = document.getElementById('authEmail');
+    const authPassword = document.getElementById('authPassword');
+    if (authEmail) authEmail.value = email;
+    if (authPassword) authPassword.value = newPassword;
+
+    setTimeout(() => {
+      fecharModalEsqueciSenha();
+      setAuthMode('login');
+      showToast('Senha atualizada com sucesso! Você já pode entrar.', 'success');
+    }, 1500);
+
+  } catch (err) {
+    console.error('Erro ao redefinir senha:', err);
+    showStep2Error('Erro ao redefinir senha. Tente novamente.');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<span>Salvar Nova Senha</span>`;
+    }
+  }
+}
+
+// ==========================================
+// MODAL MEU USUÁRIO / PERFIL DO MOTORISTA
+// ==========================================
+function abrirModalMeuPerfil() {
+  const user = getAuthUser();
+  if (!user) return;
+
+  const modal = document.getElementById('modalMeuPerfil');
+  const nomeEl = document.getElementById('perfilNome');
+  const emailEl = document.getElementById('perfilEmail');
+  const dataEl = document.getElementById('perfilData');
+
+  if (nomeEl) nomeEl.textContent = user.name || '---';
+  if (emailEl) emailEl.textContent = user.email || '---';
+  if (dataEl) {
+    if (user.createdAt) {
+      try {
+        dataEl.textContent = new Date(user.createdAt).toLocaleDateString('pt-BR');
+      } catch (e) {
+        dataEl.textContent = '---';
+      }
+    } else {
+      dataEl.textContent = '---';
+    }
+  }
+
+  if (modal) modal.style.display = 'flex';
+}
+
+function fecharModalMeuPerfil() {
+  const modal = document.getElementById('modalMeuPerfil');
+  if (modal) modal.style.display = 'none';
+}
+
+function abrirAlterarSenhaDoPerfil() {
+  const user = getAuthUser();
+  fecharModalMeuPerfil();
+  abrirModalEsqueciSenha();
+  if (user && user.email) {
+    const esqueciEmail = document.getElementById('esqueciEmail');
+    if (esqueciEmail) esqueciEmail.value = user.email;
+  }
+}
+
+// ==========================================
 // VISUALIZADOR DE SENHA (OLHO)
 // ==========================================
 function togglePasswordVisibility(inputId, btnEl) {
@@ -315,6 +663,16 @@ function togglePasswordVisibility(inputId, btnEl) {
   }
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Expõe no escopo global
 window.TruckAuth = {
   initAuth,
@@ -324,5 +682,17 @@ window.TruckAuth = {
   logout,
   setAuthMode,
   handleAuthSubmit,
-  togglePasswordVisibility
+  togglePasswordVisibility,
+  preencherEmailLogin,
+  renderSavedAccountsHint,
+  abrirModalEsqueciSenha,
+  fecharModalEsqueciSenha,
+  voltarPasso1Esqueci,
+  solicitarCodigoRecuperacao,
+  preencherCodigoEsqueci,
+  confirmarNovaSenha,
+  abrirModalMeuPerfil,
+  fecharModalMeuPerfil,
+  abrirAlterarSenhaDoPerfil
 };
+
