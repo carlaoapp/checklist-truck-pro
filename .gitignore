@@ -5,3 +5,7 @@ Thumbs.db
 npm-debug.log*
 .vscode/
 .idea/
+python_tools/.whatsapp_session/
+.whatsapp_session/
+__pycache__/
+*.pyc

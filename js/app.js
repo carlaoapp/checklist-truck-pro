@@ -1073,6 +1073,62 @@ function formatChecklistReportText(chk, medias, includedItemIds = null) {
   return report.trim();
 }
 
+// Legenda otimizada especificamente para fotos compartilhadas no WhatsApp.
+// O WhatsApp possui um limite estrito de 1024 caracteres na legenda de mídias enviadas via sistema operacional.
+// Se o texto exceder 1024 caracteres, o WhatsApp descarta o texto e envia apenas as fotos.
+// Esta função sintetiza os dados vitais para garantir que a legenda SEMPRE acompanhe as fotos.
+function formatWhatsAppPhotoCaption(chk, includedItemIds = null) {
+  if (!chk) return '';
+
+  const itemsToInclude = (chk.items || []).filter(item => {
+    if (!includedItemIds || includedItemIds.size === 0) return true;
+    return includedItemIds.has(item.id);
+  });
+
+  const defects = itemsToInclude.filter(i => i.status === 'danger');
+  const warnings = itemsToInclude.filter(i => i.status === 'warn');
+  const oks = itemsToInclude.filter(i => i.status === 'ok');
+
+  let cap = `📋 *VISTORIA VEICULAR - TRUCK PRO*\n`;
+  cap += `🚛 *Cavalo:* ${(chk.plateHorse || 'N/A').toUpperCase()}`;
+  if (chk.plateTrailer1) cap += ` | *Carreta:* ${chk.plateTrailer1.toUpperCase()}`;
+  if (chk.plateTrailer2) cap += ` | *Carreta 2:* ${chk.plateTrailer2.toUpperCase()}`;
+  cap += `\n`;
+
+  if (chk.driverName) cap += `👤 *Motorista:* ${chk.driverName}\n`;
+  if (chk.currentKm) cap += `🔢 *KM:* ${chk.currentKm} | `;
+  cap += `📅 ${chk.inspectionDateTime || getFormattedCurrentDateTime()}\n`;
+  if (chk.locationText) cap += `📍 *Local:* ${chk.locationText}\n`;
+  if (chk.latitude && chk.longitude) {
+    cap += `🗺️ https://www.google.com/maps?q=${chk.latitude},${chk.longitude}\n`;
+  }
+
+  cap += `--------------------------------------\n`;
+
+  if (defects.length > 0 || warnings.length > 0) {
+    cap += `⚠️ *ITENS CRÍTICOS (${defects.length + warnings.length}):*\n`;
+    defects.forEach(d => {
+      const note = d.note && d.note.trim() ? ` (${d.note.trim()})` : '';
+      cap += `🔴 [DEFEITO] ${d.title}${note}\n`;
+    });
+    warnings.forEach(w => {
+      const note = w.note && w.note.trim() ? ` (${w.note.trim()})` : '';
+      cap += `🟡 [ALERTA] ${w.title}${note}\n`;
+    });
+  } else {
+    cap += `✅ *Todos os ${oks.length} itens avaliados estão CONFORMES!*\n`;
+  }
+
+  cap += `📊 *Resumo:* ${oks.length} OK | ${warnings.length} Alertas | ${defects.length} Defeitos\n`;
+  cap += `📄 *Relatório detalhado completo copiado na memória.*`;
+
+  if (cap.length > 950) {
+    cap = cap.substring(0, 910) + '...\n📄 Relatório detalhado copiado na área de transferência.';
+  }
+
+  return cap.trim();
+}
+
 async function generateChecklistReportText(checklistId) {
   const targetId = checklistId || (activeChecklist ? activeChecklist.id : null);
   if (!targetId) return '';
@@ -1619,9 +1675,18 @@ async function shareMediaWithReport({ title, text, photoFiles, videoFiles, chk }
   const firstBatch = batches[0];
   const canShareFiles = (files) => files && files.length > 0 && navigator.canShare && navigator.canShare({ files });
 
-  const firstBatchText = firstBatch.type === 'photos'
-    ? text
-    : (photoFiles.length === 0 ? (firstBatch.shareCaption || text) : (firstBatch.shareCaption || text));
+  let firstBatchText = text;
+  if (firstBatch.type === 'photos') {
+    // Se o texto for longo (> 950 caracteres), o WhatsApp no Android/iOS descarta a legenda da foto.
+    // Usamos a legenda otimizada formatWhatsAppPhotoCaption para garantir que vá JUNTO com a foto.
+    if ((text || '').length > 950) {
+      firstBatchText = formatWhatsAppPhotoCaption(chk, currentModalShareData ? currentModalShareData.selectedItemIds : null);
+    } else {
+      firstBatchText = text;
+    }
+  } else {
+    firstBatchText = (photoFiles.length === 0 ? (firstBatch.shareCaption || text) : (firstBatch.shareCaption || text));
+  }
 
   if (canShareFiles(firstBatch.files)) {
     try {
@@ -2192,6 +2257,72 @@ async function shareReportViaWhatsApp(checklistId) {
   await openSharePreviewModal(checklistId);
 }
 
+// Exporta pacote com checklist estruturado e fotos/vídeos em Base64
+// Pronto para ser lido e disparado pelo script Python (python_tools/whatsapp_sender.py)
+async function exportChecklistPackageForPython() {
+  const chk = currentModalShareData.checklist || activeChecklist;
+  if (!chk) {
+    showToast('Nenhum checklist disponível para exportar.', 'warning');
+    return;
+  }
+
+  showToast('Gerando pacote para robô Python...', 'info');
+
+  try {
+    const medias = currentModalShareData.medias || (await window.TruckDB.getMediaByChecklist(chk.id)) || [];
+    const mediaPayload = [];
+
+    for (const m of medias) {
+      if (m.blob) {
+        const base64Data = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(m.blob);
+        });
+
+        if (base64Data) {
+          mediaPayload.push({
+            id: m.id,
+            itemId: m.itemId,
+            type: m.type,
+            name: m.name || `${m.type}_${m.id}.jpg`,
+            mimeType: m.mimeType || m.blob.type,
+            base64: base64Data
+          });
+        }
+      }
+    }
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      appVersion: '1.10.3',
+      checklist: chk,
+      reportText: formatChecklistReportText(chk, medias, currentModalShareData.selectedItemIds),
+      photoCaption: formatWhatsAppPhotoCaption(chk, currentModalShareData.selectedItemIds),
+      medias: mediaPayload
+    };
+
+    const cleanPlate = (chk.plateHorse || 'TRUCK').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const filename = `checklist_python_${cleanPlate}_${Date.now()}.json`;
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('Pacote exportado! Abra o "executar_whatsapp_python.bat" para enviar.', 'success');
+  } catch (err) {
+    console.error('Erro ao exportar pacote:', err);
+    showToast('Erro ao exportar pacote do checklist.', 'danger');
+  }
+}
+
 // ==========================================
 // BADGES & NOTIFICAÇÕES
 // ==========================================
@@ -2416,3 +2547,5 @@ window.shareIndividualItem = shareIndividualItem;
 window.setModalItemFilter = setModalItemFilter;
 window.toggleModalChecklistItem = toggleModalChecklistItem;
 window.toggleAllModalItemSelection = toggleAllModalItemSelection;
+window.exportChecklistPackageForPython = exportChecklistPackageForPython;
+window.formatWhatsAppPhotoCaption = formatWhatsAppPhotoCaption;
