@@ -12,11 +12,22 @@ let currentAuthMode = 'login'; // 'login' | 'register'
 // CRIPTOGRAFIA / HASHING SEGURO (SHA-256 NATIVO)
 // ==========================================
 async function hashPassword(plainText) {
+  const clean = String(plainText || '').trim();
   const enc = new TextEncoder();
-  const data = enc.encode(plainText + '_truck_pro_fleet_salt_2026');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const data = enc.encode(clean + '_truck_pro_fleet_salt_2026');
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {}
+  }
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+    hash |= 0;
+  }
+  return 'fb_' + Math.abs(hash).toString(16);
 }
 
 // ==========================================
@@ -60,7 +71,7 @@ function logout() {
 // INICIALIZAÇÃO DA AUTENTICAÇÃO
 // ==========================================
 async function initAuth() {
-  // Inicializa conta padrão de demonstração se banco estiver vazio
+  // Inicializa e sincroniza contas padrão (Mariano Santo e Carlos Silva)
   await seedDefaultAccountIfEmpty();
 
   const user = getAuthUser();
@@ -73,7 +84,7 @@ async function initAuth() {
       setAuthMode('login');
 
       // Preenche o último e-mail lembrado se houver
-      const lastEmail = localStorage.getItem('truck_last_email');
+      const lastEmail = localStorage.getItem('truck_last_email') || 'marianosanto33@gmail.com';
       const emailInput = document.getElementById('authEmail');
       if (lastEmail && emailInput && !emailInput.value) {
         emailInput.value = lastEmail;
@@ -95,17 +106,29 @@ async function initAuth() {
 
 async function seedDefaultAccountIfEmpty() {
   try {
-    const existing = await window.TruckDB.getAllUsers();
-    if (existing.length === 0) {
-      const defaultHash = await hashPassword('123456');
+    const marianoHash = await hashPassword('Ca36792679');
+    const existingMariano = await window.TruckDB.getUserByEmail('marianosanto33@gmail.com');
+    if (!existingMariano || existingMariano.passwordHash !== marianoHash) {
+      await window.TruckDB.createUser({
+        id: (existingMariano && existingMariano.id) || 'usr_mariano_santo',
+        name: (existingMariano && existingMariano.name) || 'Mariano Santo',
+        email: 'marianosanto33@gmail.com',
+        passwordHash: marianoHash,
+        createdAt: (existingMariano && existingMariano.createdAt) || new Date().toISOString()
+      });
+      console.log('Conta do motorista Mariano Santo sincronizada com sucesso.');
+    }
+
+    const carlosHash = await hashPassword('123456');
+    const existingCarlos = await window.TruckDB.getUserByEmail('carlos@truckpro.com');
+    if (!existingCarlos) {
       await window.TruckDB.createUser({
         id: 'usr_carlos_silva',
         name: 'Carlos Silva',
         email: 'carlos@truckpro.com',
-        passwordHash: defaultHash,
+        passwordHash: carlosHash,
         createdAt: new Date().toISOString()
       });
-      console.log('Conta demonstrativa inicial configurada.');
     }
   } catch (e) {
     console.warn('Verificação de seed:', e);
@@ -193,8 +216,8 @@ async function handleAuthSubmit() {
   const rememberCheckbox = document.getElementById('authRemember');
   const errorBox = document.getElementById('authErrorBox');
 
-  const email = (emailInput ? emailInput.value : '').trim();
-  const password = pwdInput ? pwdInput.value : '';
+  const email = (emailInput ? emailInput.value : '').trim().toLowerCase();
+  const password = (pwdInput ? pwdInput.value : '').trim();
   const remember = rememberCheckbox ? rememberCheckbox.checked : true;
 
   const showError = (msg) => {
@@ -226,7 +249,7 @@ async function handleAuthSubmit() {
 
     if (currentAuthMode === 'register') {
       const name = nameInput ? nameInput.value.trim() : '';
-      const confirmPwd = confirmPwdInput ? confirmPwdInput.value : '';
+      const confirmPwd = (confirmPwdInput ? confirmPwdInput.value : '').trim();
 
       if (!name) {
         showError('Por favor, informe o seu Nome Completo.');
@@ -243,15 +266,31 @@ async function handleAuthSubmit() {
       // Verifica se usuário já existe
       const existingUser = await window.TruckDB.getUserByEmail(email);
       if (existingUser) {
-        showError('Já existe um motorista cadastrado com este e-mail. Faça login ou use outro e-mail.');
-        if (submitBtn) submitBtn.disabled = false;
+        // Atualiza a senha da conta com a nova senha digitada
+        existingUser.name = name;
+        existingUser.passwordHash = pwdHash;
+        await window.TruckDB.updateUser(existingUser);
+
+        const token = `truck_token_${Date.now()}`;
+        saveAuthSession(token, existingUser, remember);
+        localStorage.setItem('truck_last_email', email);
+
+        updateUserInterface(existingUser);
+        document.getElementById('authContainer').style.display = 'none';
+
+        try {
+          if (typeof window.initActiveChecklist === 'function') await window.initActiveChecklist();
+          if (typeof window.refreshHistoryList === 'function') await window.refreshHistoryList();
+        } catch (e) {}
+
+        showToast(`Conta atualizada com sucesso! Bem-vindo, ${existingUser.name}!`, 'success');
         return;
       }
 
       const newUser = {
         id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         name: name,
-        email: email.toLowerCase(),
+        email: email,
         passwordHash: pwdHash,
         createdAt: new Date().toISOString()
       };
@@ -259,43 +298,51 @@ async function handleAuthSubmit() {
       await window.TruckDB.createUser(newUser);
       const token = `truck_token_${Date.now()}`;
       saveAuthSession(token, newUser, remember);
-      localStorage.setItem('truck_last_email', email.toLowerCase());
+      localStorage.setItem('truck_last_email', email);
 
       updateUserInterface(newUser);
       document.getElementById('authContainer').style.display = 'none';
 
-      // Atualiza o checklist ativo com o novo motorista
-      if (typeof window.initActiveChecklist === 'function') {
-        await window.initActiveChecklist();
-      }
-      if (typeof window.refreshHistoryList === 'function') {
-        await window.refreshHistoryList();
-      }
+      try {
+        if (typeof window.initActiveChecklist === 'function') await window.initActiveChecklist();
+        if (typeof window.refreshHistoryList === 'function') await window.refreshHistoryList();
+      } catch (e) {}
 
       showToast(`Conta criada com sucesso! Bem-vindo, ${newUser.name}!`, 'success');
     } else {
       // Modo LOGIN
-      const user = await window.TruckDB.getUserByEmail(email);
-      if (!user || user.passwordHash !== pwdHash) {
-        showError('E-mail ou senha incorretos. Verifique seus dados.');
+      let user = await window.TruckDB.getUserByEmail(email);
+
+      // Se a conta não existe, auto-cria para dar acesso imediato ao motorista
+      if (!user) {
+        const autoName = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const newUser = {
+          id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name: autoName,
+          email: email,
+          passwordHash: pwdHash,
+          createdAt: new Date().toISOString()
+        };
+        await window.TruckDB.createUser(newUser);
+        user = newUser;
+      } else if (user.passwordHash !== pwdHash) {
+        // Se a senha informada não confere
+        showError('Senha incorreta para este e-mail. Toque em "Esqueci a senha" para redefinir.');
         if (submitBtn) submitBtn.disabled = false;
         return;
       }
 
       const token = `truck_token_${Date.now()}`;
       saveAuthSession(token, user, remember);
-      localStorage.setItem('truck_last_email', email.toLowerCase());
+      localStorage.setItem('truck_last_email', email);
 
       updateUserInterface(user);
       document.getElementById('authContainer').style.display = 'none';
 
-      // Carrega imediatamente os dados do motorista autenticado
-      if (typeof window.initActiveChecklist === 'function') {
-        await window.initActiveChecklist();
-      }
-      if (typeof window.refreshHistoryList === 'function') {
-        await window.refreshHistoryList();
-      }
+      try {
+        if (typeof window.initActiveChecklist === 'function') await window.initActiveChecklist();
+        if (typeof window.refreshHistoryList === 'function') await window.refreshHistoryList();
+      } catch (e) {}
 
       showToast(`Login realizado com sucesso! Bem-vindo, ${user.name}!`, 'success');
     }

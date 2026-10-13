@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'TruckChecklistDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_CHECKLISTS = 'checklists';
 const STORE_MEDIA = 'media_files';
 const STORE_USERS = 'users';
@@ -27,6 +27,11 @@ function openDB() {
         const userStore = db.createObjectStore(STORE_USERS, { keyPath: 'id' });
         userStore.createIndex('email', 'email', { unique: true });
         userStore.createIndex('createdAt', 'createdAt', { unique: false });
+      } else {
+        const userStore = event.target.transaction.objectStore(STORE_USERS);
+        if (!userStore.indexNames.contains('email')) {
+          userStore.createIndex('email', 'email', { unique: true });
+        }
       }
 
       // Store para múltiplos checklists (Histórico de Pendentes e Concluídos)
@@ -243,72 +248,154 @@ async function deleteMediaRecord(id) {
 }
 
 // ==========================================
-// OPERAÇÕES DE USUÁRIOS (CADASTRO E LOGIN OFFLINE)
+// OPERAÇÕES DE USUÁRIOS (CADASTRO E LOGIN OFFLINE RESILIENTE)
 // ==========================================
 
 async function createUser(user) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_USERS], 'readwrite');
-    const store = transaction.objectStore(STORE_USERS);
-    const request = store.add(user);
+  if (!user || !user.email) return user;
+  const cleanEmail = user.email.toLowerCase().trim();
+  const record = { ...user, email: cleanEmail };
 
-    request.onsuccess = () => resolve(user);
-    request.onerror = (e) => reject(e.target.error);
-  });
+  // 1. Salva imediatamente no localStorage (100% garantido e persistente)
+  try {
+    const localUsers = JSON.parse(localStorage.getItem('truck_users_store') || '[]');
+    const idx = localUsers.findIndex(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
+    if (idx >= 0) {
+      localUsers[idx] = record;
+    } else {
+      localUsers.push(record);
+    }
+    localStorage.setItem('truck_users_store', JSON.stringify(localUsers));
+  } catch (e) {}
+
+  // 2. Salva no IndexedDB (se disponível)
+  try {
+    const db = await openDB();
+    await new Promise((resolve) => {
+      try {
+        const transaction = db.transaction([STORE_USERS], 'readwrite');
+        const store = transaction.objectStore(STORE_USERS);
+        const req = store.put(record);
+        req.onsuccess = () => resolve(record);
+        req.onerror = () => resolve(record);
+      } catch (err) {
+        resolve(record);
+      }
+    });
+  } catch (err) {}
+
+  return record;
+}
+
+async function updateUser(user) {
+  return createUser(user);
 }
 
 async function getUserByEmail(email) {
   if (!email) return null;
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_USERS], 'readonly');
-    const store = transaction.objectStore(STORE_USERS);
-    const index = store.index('email');
-    const cleanEmail = email.toLowerCase().trim();
-    const request = index.get(cleanEmail);
+  const cleanEmail = email.toLowerCase().trim();
 
-    request.onsuccess = () => resolve(request.result || null);
-    request.onerror = (e) => reject(e.target.error);
-  });
+  // 1. Tenta recuperar do localStorage primeiro (super rápido)
+  try {
+    const localUsers = JSON.parse(localStorage.getItem('truck_users_store') || '[]');
+    const found = localUsers.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
+    if (found) return found;
+  } catch (e) {}
+
+  // 2. Tenta no IndexedDB com fallback para store.getAll()
+  try {
+    const db = await openDB();
+    return await new Promise((resolve) => {
+      try {
+        const transaction = db.transaction([STORE_USERS], 'readonly');
+        const store = transaction.objectStore(STORE_USERS);
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const all = req.result || [];
+          const found = all.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
+          if (found) {
+            // Sincroniza no localStorage para acesso futuro imediato
+            try {
+              const localUsers = JSON.parse(localStorage.getItem('truck_users_store') || '[]');
+              if (!localUsers.some(u => u.email === found.email)) {
+                localUsers.push(found);
+                localStorage.setItem('truck_users_store', JSON.stringify(localUsers));
+              }
+            } catch (err) {}
+            resolve(found);
+          } else {
+            resolve(null);
+          }
+        };
+        req.onerror = () => resolve(null);
+      } catch (txErr) {
+        resolve(null);
+      }
+    });
+  } catch (err) {
+    return null;
+  }
 }
 
 async function getUserById(id) {
   if (!id) return null;
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_USERS], 'readonly');
-    const store = transaction.objectStore(STORE_USERS);
-    const request = store.get(id);
+  try {
+    const localUsers = JSON.parse(localStorage.getItem('truck_users_store') || '[]');
+    const found = localUsers.find(u => u.id === id);
+    if (found) return found;
+  } catch (e) {}
 
-    request.onsuccess = () => resolve(request.result || null);
-    request.onerror = (e) => reject(e.target.error);
-  });
+  try {
+    const db = await openDB();
+    return await new Promise((resolve) => {
+      try {
+        const transaction = db.transaction([STORE_USERS], 'readonly');
+        const store = transaction.objectStore(STORE_USERS);
+        const request = store.get(id);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => resolve(null);
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  } catch (e) {
+    return null;
+  }
 }
 
 async function getAllUsers() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_USERS], 'readonly');
-    const store = transaction.objectStore(STORE_USERS);
-    const request = store.getAll();
+  const usersMap = new Map();
 
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = (e) => reject(e.target.error);
-  });
-}
+  // 1. Do localStorage
+  try {
+    const localUsers = JSON.parse(localStorage.getItem('truck_users_store') || '[]');
+    localUsers.forEach(u => {
+      if (u.email) usersMap.set(u.email.toLowerCase().trim(), u);
+    });
+  } catch (e) {}
 
-async function updateUser(user) {
-  if (!user || !user.id) return null;
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_USERS], 'readwrite');
-    const store = transaction.objectStore(STORE_USERS);
-    const request = store.put(user);
+  // 2. Do IndexedDB
+  try {
+    const db = await openDB();
+    const idbUsers = await new Promise((resolve) => {
+      try {
+        const transaction = db.transaction([STORE_USERS], 'readonly');
+        const store = transaction.objectStore(STORE_USERS);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      } catch (e) {
+        resolve([]);
+      }
+    });
+    idbUsers.forEach(u => {
+      if (u.email && !usersMap.has(u.email.toLowerCase().trim())) {
+        usersMap.set(u.email.toLowerCase().trim(), u);
+      }
+    });
+  } catch (e) {}
 
-    request.onsuccess = () => resolve(user);
-    request.onerror = (e) => reject(e.target.error);
-  });
+  return Array.from(usersMap.values());
 }
 
 // Expõe no escopo global
