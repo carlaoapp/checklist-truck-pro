@@ -72,9 +72,6 @@ async function initAuth() {
       authContainer.style.display = 'flex';
       setAuthMode('login');
 
-      // Exibe contas cadastradas neste aparelho para login com 1 toque
-      await renderSavedAccountsHint();
-
       // Preenche o último e-mail lembrado se houver
       const lastEmail = localStorage.getItem('truck_last_email');
       const emailInput = document.getElementById('authEmail');
@@ -307,48 +304,6 @@ async function handleAuthSubmit() {
     showError('Ocorreu um erro ao processar. Tente novamente.');
   } finally {
     if (submitBtn) submitBtn.disabled = false;
-  }
-}
-
-// ==========================================
-// SUGESTÃO DE CONTAS SALVAS NESTE APARELHO
-// ==========================================
-async function renderSavedAccountsHint() {
-  const container = document.getElementById('authSavedAccountsHint');
-  if (!container) return;
-  try {
-    const users = await window.TruckDB.getAllUsers();
-    if (!users || users.length === 0) {
-      container.style.display = 'none';
-      return;
-    }
-    container.innerHTML = `
-      <div class="auth-saved-accounts-title">
-        <svg class="ui-icon" style="width: 12px; height: 12px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Contas salvas neste aparelho (toque para preencher):</span>
-      </div>
-      <div class="auth-saved-accounts-list">
-        ${users.map(u => `
-          <button type="button" class="auth-account-chip" onclick="TruckAuth.preencherEmailLogin('${escapeHtml(u.email)}')">
-            <span>👤 ${escapeHtml(u.email)}</span>
-          </button>
-        `).join('')}
-      </div>
-    `;
-    container.style.display = 'block';
-  } catch (e) {
-    console.warn('Erro ao carregar contas salvas:', e);
-  }
-}
-
-function preencherEmailLogin(email) {
-  const emailInput = document.getElementById('authEmail');
-  const pwdInput = document.getElementById('authPassword');
-  if (emailInput) {
-    emailInput.value = email;
-  }
-  if (pwdInput) {
-    pwdInput.focus();
   }
 }
 
@@ -683,8 +638,6 @@ window.TruckAuth = {
   setAuthMode,
   handleAuthSubmit,
   togglePasswordVisibility,
-  preencherEmailLogin,
-  renderSavedAccountsHint,
   abrirModalEsqueciSenha,
   fecharModalEsqueciSenha,
   voltarPasso1Esqueci,
