@@ -956,7 +956,7 @@ async function renderHistoryView(allChecklists = null) {
              </button>`
         }
 
-        <button type="button" class="btn-hist-action btn-hist-share" onclick="shareReportViaWhatsApp('${item.id}')">
+        <button type="button" class="btn-hist-action btn-hist-share" onclick="shareReportViaWhatsApp('${item.id}', event)">
           <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
           <span>WhatsApp</span>
         </button>
@@ -1269,9 +1269,8 @@ async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
     
     try {
       if (m.type === 'photo') {
-        const compressedBlob = await compressImageForShare(m.blob);
         const filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.jpg`;
-        const file = new File([compressedBlob || m.blob], filename, { type: 'image/jpeg', lastModified: Date.now() });
+        const file = new File([m.blob], filename, { type: 'image/jpeg', lastModified: Date.now() });
         photoFiles.push(file);
       } else if (m.type === 'video') {
         const ext = (m.name && m.name.includes('.')) ? m.name.split('.').pop() : 'mp4';
@@ -1616,25 +1615,8 @@ function explainShareFailure(batch) {
 }
 
 async function shareMediaWithReport({ title, text, photoFiles = [], videoFiles = [], chk }) {
-  // 1. Otimiza vídeos silenciosamente em background se necessário (sem telas de bloqueio)
-  let readyVideos = videoFiles || [];
-  const needsOptimize = readyVideos.filter(f => (f.size || 0) > 8 * 1024 * 1024 || !(f.name || '').endsWith('.mp4'));
-  if (needsOptimize.length > 0) {
-    const ctrl = { canceled: false };
-    const optimized = [];
-    for (const f of readyVideos) {
-      if ((f.size || 0) <= 8 * 1024 * 1024 && (f.name || '').endsWith('.mp4')) {
-        optimized.push(f);
-        continue;
-      }
-      const out = await compressVideoFast(f, ctrl, null);
-      optimized.push(out || f);
-    }
-    readyVideos = optimized;
-  }
-
-  // 2. PACOTE ÚNICO: Junta fotos e vídeos no MESMO array de arquivos (nada de separar!)
-  const allFiles = [...(photoFiles || []), ...readyVideos];
+  // 1. PACOTE ÚNICO: Junta fotos e vídeos diretamente no mesmo array para envio imediato
+  const allFiles = [...(photoFiles || []), ...(videoFiles || [])];
   const shareTitle = title || 'Checklist Truck Pro';
 
   // 3. Legenda formatada especificamente para o WhatsApp (abaixo de 950 chars para nunca sumir)
@@ -2165,40 +2147,40 @@ async function executeShareReportDocument(targetMediaType = 'auto') {
 
 // Compartilhamento DIRETO e NATIVO: Ao clicar em compartilhar, abre a tela nativa do celular (WebShare)
 // com Fotos e Vídeos juntos acima e as informações da vistoria na legenda abaixo.
-async function executeDirectNativeShare(checklistId) {
+async function executeDirectNativeShare(checklistId, ev = null) {
   const targetId = checklistId || (activeChecklist ? activeChecklist.id : null);
   if (!targetId) {
     showToast('Nenhum checklist disponível para compartilhar.', 'warning');
     return;
   }
 
-  // Se for o checklist ativo, salva alterações antes de compartilhar
-  if (activeChecklist && activeChecklist.id === targetId) {
-    collectFormIntoActiveChecklist();
-    await window.TruckDB.saveChecklist(activeChecklist);
-  }
-
-  const [chkData, medias] = await Promise.all([
-    window.TruckDB.getChecklist(targetId),
-    window.TruckDB.getMediaByChecklist(targetId)
-  ]);
-
-  const chk = chkData || activeChecklist;
-  if (!chk) {
-    showToast('Vistoria não encontrada.', 'warning');
-    return;
-  }
-
-  // Prepara botão de compartilhamento visualmente se houver (sem travar)
-  const quickBtn = document.getElementById('btnShareWhatsAppQuick');
+  // Identifica o botão acionado (no card do histórico ou na aba 2)
+  const clickedBtn = (ev && ev.currentTarget) ? ev.currentTarget : document.getElementById('btnShareWhatsAppQuick');
   let originalBtnHtml = '';
-  if (quickBtn) {
-    originalBtnHtml = quickBtn.innerHTML;
-    quickBtn.disabled = true;
-    quickBtn.innerHTML = `<span>⏳ Abrindo WhatsApp...</span>`;
+  if (clickedBtn) {
+    originalBtnHtml = clickedBtn.innerHTML;
+    clickedBtn.disabled = true;
+    clickedBtn.innerHTML = `<span>⏳ Abrindo...</span>`;
   }
 
   try {
+    // Se for o checklist ativo, salva alterações antes de compartilhar
+    if (activeChecklist && activeChecklist.id === targetId) {
+      collectFormIntoActiveChecklist();
+      await window.TruckDB.saveChecklist(activeChecklist);
+    }
+
+    const [chkData, medias] = await Promise.all([
+      window.TruckDB.getChecklist(targetId),
+      window.TruckDB.getMediaByChecklist(targetId)
+    ]);
+
+    const chk = chkData || activeChecklist;
+    if (!chk) {
+      showToast('Vistoria não encontrada.', 'warning');
+      return;
+    }
+
     const fullText = formatChecklistReportText(chk, medias);
     const photoCaption = formatWhatsAppPhotoCaption(chk);
     const shareTitle = `Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
@@ -2210,7 +2192,7 @@ async function executeDirectNativeShare(checklistId) {
       }
     } catch (e) {}
 
-    // Prepara arquivos de fotos e vídeos de forma rápida e silenciosa
+    // Prepara arquivos de fotos e vídeos de forma rápida e silenciosa (em milissegundos)
     const { photoFiles, videoFiles } = await prepareOptimizedShareFiles(chk, medias);
 
     // Fotos e vídeos enviados juntos no mesmo compartilhamento!
@@ -2235,24 +2217,24 @@ async function executeDirectNativeShare(checklistId) {
     window.location.href = whatsappUrl;
 
   } catch (err) {
-    if (err.name === 'AbortError') return;
+    if (err && err.name === 'AbortError') return;
     console.error('Erro ao compartilhar diretamente:', err);
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const fullText = formatChecklistReportText(chk, medias);
+    const fullText = formatChecklistReportText(chk || activeChecklist);
     window.location.href = isMobile 
       ? `whatsapp://send?text=${encodeURIComponent(fullText)}` 
       : `https://api.whatsapp.com/send?text=${encodeURIComponent(fullText)}`;
   } finally {
-    if (quickBtn) {
-      quickBtn.disabled = false;
-      quickBtn.innerHTML = originalBtnHtml;
+    if (clickedBtn) {
+      clickedBtn.disabled = false;
+      clickedBtn.innerHTML = originalBtnHtml;
     }
   }
 }
 
 // Ao clicar no botão de compartilhar, vai direto para a tela nativa do celular
-async function shareReportViaWhatsApp(checklistId) {
-  await executeDirectNativeShare(checklistId);
+async function shareReportViaWhatsApp(checklistId, ev = null) {
+  await executeDirectNativeShare(checklistId, ev);
 }
 
 // Exporta pacote com checklist estruturado e fotos/vídeos em Base64
@@ -2375,8 +2357,8 @@ function setupEventListeners() {
   // Ações de Salvar e Concluir
   document.getElementById('btnSaveChecklistDraft').addEventListener('click', saveCurrentChecklistDraft);
   document.getElementById('btnConcludeChecklist').addEventListener('click', concludeCurrentChecklist);
-  document.getElementById('btnShareWhatsAppQuick').addEventListener('click', () => {
-    shareReportViaWhatsApp(activeChecklist.id);
+  document.getElementById('btnShareWhatsAppQuick').addEventListener('click', (e) => {
+    shareReportViaWhatsApp(activeChecklist.id, e);
   });
 
   // Nova Vistoria
