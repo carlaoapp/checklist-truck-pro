@@ -308,7 +308,7 @@ function collectFormIntoActiveChecklist() {
   // Garante leitura das anotações de cada item abertas no formulário
   if (activeChecklist.items) {
     activeChecklist.items.forEach(item => {
-      const noteEl = document.querySelector(`#noteWrap_${item.id} textarea`);
+      const noteEl = document.querySelector(`#noteWrap_${item.id} input`) || document.querySelector(`#noteWrap_${item.id} textarea`);
       if (noteEl) {
         item.note = noteEl.value;
       }
@@ -1268,17 +1268,50 @@ async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
     const itemTag = parentItem ? parentItem.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 15) : `Item_${i + 1}`;
     
     try {
+      let rawBlob = m.blob;
+      if (!rawBlob) continue;
+
+      // Se por algum motivo estiver em formato dataURL string
+      if (typeof rawBlob === 'string' && rawBlob.startsWith('data:')) {
+        const arr = rawBlob.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : (m.type === 'photo' ? 'image/jpeg' : 'video/mp4');
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        rawBlob = new Blob([u8arr], { type: mime });
+      }
+
       if (m.type === 'photo') {
-        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.jpg`;
-        const file = new File([m.blob], filename, { type: 'image/jpeg', lastModified: Date.now() });
+        const rawMime = ((rawBlob && rawBlob.type) || m.mimeType || '').toLowerCase();
+        let mimeType = 'image/jpeg';
+        let ext = 'jpg';
+        if (rawMime.includes('png')) {
+          mimeType = 'image/png';
+          ext = 'png';
+        } else if (rawMime.includes('webp')) {
+          mimeType = 'image/webp';
+          ext = 'webp';
+        }
+        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.${ext}`;
+        const file = new File([rawBlob], filename, { type: mimeType, lastModified: Date.now() });
         photoFiles.push(file);
       } else if (m.type === 'video') {
-        const ext = (m.name && m.name.includes('.')) ? m.name.split('.').pop() : 'mp4';
-        const cleanExt = (ext === 'webm' || !ext) ? 'mp4' : ext;
-        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Video_${i + 1}.${cleanExt}`;
-        const mime = m.mimeType || (m.blob && m.blob.type) || 'video/mp4';
-        const videoMime = mime.includes('webm') ? 'video/mp4' : mime;
-        const videoFile = new File([m.blob], filename, { type: videoMime, lastModified: m.timestamp || Date.now() });
+        const rawMime = ((rawBlob && rawBlob.type) || m.mimeType || '').toLowerCase();
+        let mimeType = 'video/mp4';
+        let ext = 'mp4';
+        if (rawMime.includes('webm')) {
+          mimeType = 'video/webm';
+          ext = 'webm';
+        } else if (rawMime.includes('3gpp') || rawMime.includes('3gp')) {
+          mimeType = 'video/3gpp';
+          ext = '3gp';
+        }
+        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Video_${i + 1}.${ext}`;
+        const videoFile = new File([rawBlob], filename, { type: mimeType, lastModified: m.timestamp || Date.now() });
         videoFile.shareCaption = buildVideoCaption(chk, parentItem, videoFiles.length + 1, selectedMedias.filter(x => x.type === 'video').length);
         videoFiles.push(videoFile);
       }
@@ -1619,7 +1652,7 @@ async function shareMediaWithReport({ title, text, photoFiles = [], videoFiles =
   const allFiles = [...(photoFiles || []), ...(videoFiles || [])];
   const shareTitle = title || 'Checklist Truck Pro';
 
-  // 3. Legenda formatada especificamente para o WhatsApp (abaixo de 950 chars para nunca sumir)
+  // 2. Legenda formatada especificamente para o WhatsApp (abaixo de 950 chars para nunca sumir)
   let shareText = text || '';
   if (allFiles.length > 0) {
     if (chk && (shareText.length > 950 || !shareText)) {
@@ -1629,48 +1662,96 @@ async function shareMediaWithReport({ title, text, photoFiles = [], videoFiles =
     }
   }
 
-  // 4. ENVIO NATIVO COMPLETO: Abre a tela do celular com fotos e vídeos acima e legenda abaixo
-  if (allFiles.length > 0 && navigator.canShare && navigator.canShare({ files: allFiles })) {
+  // 3. ENVIO NATIVO COMPLETO: Abre a tela do celular com fotos e vídeos acima e legenda abaixo
+  if (allFiles.length > 0) {
+    // Tentativa 1: Enviar todos os arquivos juntos (fotos e vídeos)
+    let canShareAll = false;
     try {
-      await navigator.share({
-        title: shareTitle,
-        text: shareText,
-        files: allFiles
-      });
-      closeSharePreviewModal();
-      showToast('Vistoria e mídias compartilhadas com sucesso!', 'success');
-      return 'sent';
-    } catch (err) {
-      if (err.name === 'AbortError') return 'aborted';
-      console.warn('WebShare com arquivos completos falhou:', err);
+      canShareAll = !!(navigator.canShare && navigator.canShare({ files: allFiles }));
+    } catch (e) {
+      canShareAll = false;
+    }
+
+    if (canShareAll) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          files: allFiles
+        });
+        closeSharePreviewModal();
+        showToast('Vistoria e mídias compartilhadas com sucesso!', 'success');
+        return 'sent';
+      } catch (err) {
+        if (err.name === 'AbortError') return 'aborted';
+        console.warn('WebShare com arquivos completos falhou:', err);
+      }
+    }
+
+    // Tentativa 2 (Fallback): Se o aparelho específico não aceitar o vídeo misturado com fotos, envia as fotos juntas
+    if (photoFiles.length > 0) {
+      let canSharePhotos = false;
+      try {
+        canSharePhotos = !!(navigator.canShare && navigator.canShare({ files: photoFiles }));
+      } catch (e) {
+        canSharePhotos = false;
+      }
+
+      if (canSharePhotos) {
+        try {
+          await navigator.share({
+            title: shareTitle,
+            text: shareText,
+            files: photoFiles
+          });
+          closeSharePreviewModal();
+          showToast('Fotos e vistoria compartilhadas com sucesso!', 'success');
+          return 'sent';
+        } catch (err) {
+          if (err.name === 'AbortError') return 'aborted';
+          console.warn('WebShare com fotos falhou:', err);
+        }
+      }
+    }
+
+    // Tentativa 3: Se tinha apenas vídeos e falhou no allFiles
+    if (videoFiles.length > 0 && photoFiles.length === 0) {
+      let canShareVideos = false;
+      try {
+        canShareVideos = !!(navigator.canShare && navigator.canShare({ files: videoFiles }));
+      } catch (e) {
+        canShareVideos = false;
+      }
+
+      if (canShareVideos) {
+        try {
+          await navigator.share({
+            title: shareTitle,
+            text: shareText,
+            files: videoFiles
+          });
+          closeSharePreviewModal();
+          showToast('Vídeos e vistoria compartilhados com sucesso!', 'success');
+          return 'sent';
+        } catch (err) {
+          if (err.name === 'AbortError') return 'aborted';
+          console.warn('WebShare com vídeos falhou:', err);
+        }
+      }
     }
   }
 
-  // Fallback 1: se o aparelho específico não aceitar o vídeo misturado, envia as fotos juntas
-  if (photoFiles.length > 0 && navigator.canShare && navigator.canShare({ files: photoFiles })) {
-    try {
-      await navigator.share({
-        title: shareTitle,
-        text: shareText,
-        files: photoFiles
-      });
-      closeSharePreviewModal();
-      showToast('Fotos e vistoria compartilhadas com sucesso!', 'success');
-      return 'sent';
-    } catch (err) {
-      if (err.name === 'AbortError') return 'aborted';
-    }
-  }
-
-  // Fallback 2: Compartilha apenas o texto do relatório
-  if (navigator.canShare && navigator.canShare({ title: shareTitle, text: shareText })) {
-    try {
-      await navigator.share({ title: shareTitle, text: shareText });
-      closeSharePreviewModal();
-      showToast('Relatório compartilhado com sucesso!', 'success');
-      return 'sent';
-    } catch (err) {
-      if (err.name === 'AbortError') return 'aborted';
+  // 4. Compartilha apenas texto SOMENTE se não houver nenhuma mídia anexada
+  if (allFiles.length === 0) {
+    if (navigator.canShare && navigator.canShare({ title: shareTitle, text: shareText })) {
+      try {
+        await navigator.share({ title: shareTitle, text: shareText });
+        closeSharePreviewModal();
+        showToast('Relatório compartilhado com sucesso!', 'success');
+        return 'sent';
+      } catch (err) {
+        if (err.name === 'AbortError') return 'aborted';
+      }
     }
   }
 
@@ -1743,11 +1824,11 @@ async function shareIndividualItem(itemId) {
         const filename = `ITEM_${cleanPlate}_${cleanItemName}_Foto_${i + 1}.jpg`;
         photoFiles.push(new File([compressedBlob || m.blob], filename, { type: 'image/jpeg', lastModified: Date.now() }));
       } else if (m.type === 'video') {
-        const ext = (m.name && m.name.includes('.')) ? m.name.split('.').pop() : 'mp4';
-        const cleanExt = (ext === 'webm' || !ext) ? 'mp4' : ext;
-        const filename = `ITEM_${cleanPlate}_${cleanItemName}_Video_${i + 1}.${cleanExt}`;
-        const mime = m.mimeType || (m.blob && m.blob.type) || 'video/mp4';
-        const videoMime = mime.includes('webm') ? 'video/mp4' : mime;
+        const rawMime = (m.mimeType || (m.blob && m.blob.type) || 'video/mp4').toLowerCase();
+        const isWebm = rawMime.includes('webm');
+        const ext = isWebm ? 'webm' : 'mp4';
+        const videoMime = isWebm ? 'video/webm' : 'video/mp4';
+        const filename = `ITEM_${cleanPlate}_${cleanItemName}_Video_${i + 1}.${ext}`;
         const itemVideoFile = new File([m.blob], filename, { type: videoMime, lastModified: m.timestamp || Date.now() });
         itemVideoFile.shareCaption = buildVideoCaption(activeChecklist, item, videoFiles.length + 1, itemMedias.filter(x => x.type === 'video').length);
         videoFiles.push(itemVideoFile);
@@ -1757,14 +1838,7 @@ async function shareIndividualItem(itemId) {
     const allFiles = [...photoFiles, ...videoFiles];
     const shareTitle = `Apontamento - ${item.title} (${cleanPlate})`;
 
-    // Copia o relatório do item para o clipboard para garantia
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(itemReport);
-      }
-    } catch (e) {}
-
-    // 1. Fotos + relatório juntos; vídeos reais enviados em sequência com legenda
+    // Dispara compartilhamento com arquivos e texto
     if (allFiles.length > 0) {
       const result = await shareMediaWithReport({
         title: shareTitle,
@@ -1773,7 +1847,14 @@ async function shareIndividualItem(itemId) {
         videoFiles,
         chk: activeChecklist
       });
-      if (result === 'sent' || result === 'aborted') return;
+      if (result === 'sent' || result === 'aborted') {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(itemReport).catch(() => {});
+          }
+        } catch (e) {}
+        return;
+      }
     }
 
     // 4. Se não houver mídias ou falhar, compartilha só o texto
@@ -2075,13 +2156,6 @@ async function executeShareReportDocument(targetMediaType = 'auto') {
     const text = currentModalShareData.text || formatChecklistReportText(chk, currentModalShareData.medias, currentModalShareData.selectedItemIds);
     const shareTitle = `Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
 
-    // Copia o resumo em texto para o clipboard para garantia
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      }
-    } catch (e) {}
-
     const { photoFiles, videoFiles, allFiles } = await prepareOptimizedShareFiles(
       chk, 
       currentModalShareData.medias, 
@@ -2105,7 +2179,7 @@ async function executeShareReportDocument(targetMediaType = 'auto') {
       sendVideos = [];
     }
 
-    // Fotos + relatório juntos; vídeos reais enviados em sequência com legenda
+    // Fotos e vídeos enviados juntos nativamente com o relatório na legenda
     const result = await shareMediaWithReport({
       title: shareTitle,
       text,
@@ -2113,9 +2187,22 @@ async function executeShareReportDocument(targetMediaType = 'auto') {
       videoFiles: sendVideos,
       chk
     });
-    if (result === 'sent' || result === 'aborted') return;
+    if (result === 'sent' || result === 'aborted') {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).catch(() => {});
+        }
+      } catch (e) {}
+      return;
+    }
 
-    // 4. Fallback: Abre o WhatsApp diretamente com o texto do relatório (sem downloads indesejados)
+    // Fallback: copia e abre o WhatsApp com o texto do relatório
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch (e) {}
+
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const encodedText = encodeURIComponent(text);
     const whatsappUrl = isMobile 
@@ -2164,38 +2251,32 @@ async function executeDirectNativeShare(checklistId, ev = null) {
   }
 
   try {
-    // Se for o checklist ativo, salva alterações antes de compartilhar
+    // 1. Atualiza dados do formulário imediatamente sem atrasar o gesto do usuário
     if (activeChecklist && activeChecklist.id === targetId) {
       collectFormIntoActiveChecklist();
-      await window.TruckDB.saveChecklist(activeChecklist);
+      window.TruckDB.saveChecklist(activeChecklist).catch(console.warn);
     }
 
-    const [chkData, medias] = await Promise.all([
-      window.TruckDB.getChecklist(targetId),
-      window.TruckDB.getMediaByChecklist(targetId)
-    ]);
+    // 2. Obtém os dados e as mídias da vistoria
+    const chk = (activeChecklist && activeChecklist.id === targetId)
+      ? activeChecklist
+      : await window.TruckDB.getChecklist(targetId);
 
-    const chk = chkData || activeChecklist;
     if (!chk) {
       showToast('Vistoria não encontrada.', 'warning');
       return;
     }
 
+    const medias = await window.TruckDB.getMediaByChecklist(targetId);
+
     const fullText = formatChecklistReportText(chk, medias);
-    const photoCaption = formatWhatsAppPhotoCaption(chk);
     const shareTitle = `Vistoria - Placa ${(chk.plateHorse || 'Truck Pro').toUpperCase()}`;
 
-    // Copia o relatório completo para o clipboard para garantia
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(fullText);
-      }
-    } catch (e) {}
-
-    // Prepara arquivos de fotos e vídeos de forma rápida e silenciosa (em milissegundos)
+    // 3. Prepara arquivos de fotos e vídeos de forma rápida e silenciosa
+    // IMPORTANTE: NÃO chamamos navigator.clipboard.writeText aqui para NÃO consumir o User Activation no Chrome Android!
     const { photoFiles, videoFiles } = await prepareOptimizedShareFiles(chk, medias);
 
-    // Fotos e vídeos enviados juntos no mesmo compartilhamento!
+    // 4. Fotos e vídeos enviados juntos no mesmo compartilhamento nativo!
     const result = await shareMediaWithReport({
       title: shareTitle,
       text: fullText,
@@ -2204,16 +2285,30 @@ async function executeDirectNativeShare(checklistId, ev = null) {
       chk
     });
 
-    if (result === 'sent' || result === 'aborted') return;
+    if (result === 'sent' || result === 'aborted') {
+      // Como conveniência adicional, copia o texto completo para o clipboard após o compartilhamento
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(fullText).catch(() => {});
+        }
+      } catch (e) {}
+      return;
+    }
 
-    // Fallback caso não suporte WebShare com arquivos (ex: PC sem suporte)
+    // 5. Fallback apenas se o dispositivo não der suporte nativo a WebShare de arquivos (ex: PC desktop comum)
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(fullText);
+      }
+    } catch (e) {}
+
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const encodedText = encodeURIComponent(fullText);
     const whatsappUrl = isMobile 
       ? `whatsapp://send?text=${encodedText}` 
       : `https://api.whatsapp.com/send?text=${encodedText}`;
 
-    showToast('Abrindo WhatsApp com o relatório...', 'success');
+    showToast('Abrindo WhatsApp com o relatório...', 'info');
     window.location.href = whatsappUrl;
 
   } catch (err) {
