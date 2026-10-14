@@ -1253,74 +1253,73 @@ function extractVideoFrameForShare(blob, maxWidth = 1280, maxHeight = 1280, qual
   });
 }
 
-// Prepara arquivos de fotos e vídeos para compartilhamento nativo no WhatsApp
+// Prepara arquivos de fotos e vídeos para compartilhamento nativo no WhatsApp.
+// Usa EXATAMENTE o mesmo preparo do "Compartilhar Somente Este Item" (que funciona):
+// cada foto é comprimida em JPEG (máx. 1280px) para o pacote caber no limite do Android.
 async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
-  const photoFiles = [];
-  const videoFiles = [];
   const cleanPlate = (chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
-  
+
   let selectedMedias = (medias || []).filter(m => m.includeInShare !== false && m.blob);
   if (includedItemIds && includedItemIds.size > 0) {
     selectedMedias = selectedMedias.filter(m => includedItemIds.has(m.itemId));
   }
 
-  for (let i = 0; i < selectedMedias.length; i++) {
-    const m = selectedMedias[i];
+  // Ordena pela ordem dos itens do checklist (as mídias do 1º item primeiro)
+  const itemOrder = new Map((chk.items || []).map((it, idx) => [it.id, idx]));
+  selectedMedias.sort((a, b) => {
+    const oa = itemOrder.has(a.itemId) ? itemOrder.get(a.itemId) : 999;
+    const ob = itemOrder.has(b.itemId) ? itemOrder.get(b.itemId) : 999;
+    return oa !== ob ? oa - ob : (a.timestamp || 0) - (b.timestamp || 0);
+  });
+
+  const totalVideos = selectedMedias.filter(x => x.type === 'video').length;
+  let videoCounter = 0;
+
+  // Processamento em paralelo (mais rápido que um por um)
+  const tasks = selectedMedias.map(async (m, i) => {
     const parentItem = (chk.items || []).find(it => it.id === m.itemId);
     const itemTag = parentItem ? parentItem.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 15) : `Item_${i + 1}`;
-    
     try {
-      let rawBlob = m.blob;
-      if (!rawBlob) continue;
-
-      // Se por algum motivo estiver em formato dataURL string
-      if (typeof rawBlob === 'string' && rawBlob.startsWith('data:')) {
-        const arr = rawBlob.split(',');
-        const mimeMatch = arr[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : (m.type === 'photo' ? 'image/jpeg' : 'video/mp4');
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-          u8arr[n] = bstr.charCodeAt(n);
-        }
-        rawBlob = new Blob([u8arr], { type: mime });
-      }
+      const rawBlob = m.blob;
+      if (!rawBlob) return null;
 
       if (m.type === 'photo') {
-        const rawMime = ((rawBlob && rawBlob.type) || m.mimeType || '').toLowerCase();
-        let mimeType = 'image/jpeg';
-        let ext = 'jpg';
-        if (rawMime.includes('png')) {
-          mimeType = 'image/png';
-          ext = 'png';
-        } else if (rawMime.includes('webp')) {
-          mimeType = 'image/webp';
-          ext = 'webp';
-        }
-        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.${ext}`;
-        const file = new File([rawBlob], filename, { type: mimeType, lastModified: Date.now() });
-        photoFiles.push(file);
-      } else if (m.type === 'video') {
-        const rawMime = ((rawBlob && rawBlob.type) || m.mimeType || '').toLowerCase();
-        let mimeType = 'video/mp4';
-        let ext = 'mp4';
-        if (rawMime.includes('webm')) {
-          mimeType = 'video/webm';
-          ext = 'webm';
-        } else if (rawMime.includes('3gpp') || rawMime.includes('3gp')) {
-          mimeType = 'video/3gpp';
-          ext = '3gp';
-        }
+        const compressedBlob = await withTimeout(compressImageForShare(rawBlob), 8000, null);
+        const filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.jpg`;
+        return {
+          kind: 'photo',
+          file: new File([compressedBlob || rawBlob], filename, { type: 'image/jpeg', lastModified: Date.now() })
+        };
+      }
+
+      if (m.type === 'video') {
+        const rawMime = ((rawBlob && rawBlob.type) || m.mimeType || 'video/mp4').toLowerCase();
+        const isWebm = rawMime.includes('webm');
+        const ext = isWebm ? 'webm' : 'mp4';
+        const mimeType = isWebm ? 'video/webm' : 'video/mp4';
         const filename = `VISTORIA_${cleanPlate}_${itemTag}_Video_${i + 1}.${ext}`;
         const videoFile = new File([rawBlob], filename, { type: mimeType, lastModified: m.timestamp || Date.now() });
-        videoFile.shareCaption = buildVideoCaption(chk, parentItem, videoFiles.length + 1, selectedMedias.filter(x => x.type === 'video').length);
-        videoFiles.push(videoFile);
+        return { kind: 'video', file: videoFile, parentItem };
       }
     } catch (err) {
       console.warn('Erro ao preparar mídia para compartilhamento:', err);
     }
-  }
+    return null;
+  });
+
+  const results = await Promise.all(tasks);
+  const photoFiles = [];
+  const videoFiles = [];
+  results.forEach(r => {
+    if (!r) return;
+    if (r.kind === 'photo') {
+      photoFiles.push(r.file);
+    } else {
+      videoCounter++;
+      r.file.shareCaption = buildVideoCaption(chk, r.parentItem, videoCounter, totalVideos);
+      videoFiles.push(r.file);
+    }
+  });
 
   return { photoFiles, videoFiles, allFiles: [...photoFiles, ...videoFiles] };
 }
