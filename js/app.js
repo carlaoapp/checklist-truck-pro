@@ -1147,8 +1147,41 @@ async function generateChecklistReportText(checklistId) {
 
 // Comprime foto para envio leve e ultra-rápido no WhatsApp (evita estourar limite do Android)
 function compressImageForShare(blob, maxWidth = 1280, maxHeight = 1280, quality = 0.8) {
+  if (!blob) return Promise.resolve(null);
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(blob).then(bmp => {
+      let width = bmp.width;
+      let height = bmp.height;
+
+      if (width > maxWidth || height > maxHeight) {
+        if (width > height) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        } else {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bmp, 0, 0, width, height);
+      if (bmp.close) bmp.close();
+
+      return new Promise(res => {
+        canvas.toBlob(compressedBlob => {
+          res(compressedBlob || blob);
+        }, 'image/jpeg', quality);
+      });
+    }).catch(() => fallbackCompressImage(blob, maxWidth, maxHeight, quality));
+  }
+  return fallbackCompressImage(blob, maxWidth, maxHeight, quality);
+}
+
+function fallbackCompressImage(blob, maxWidth = 1280, maxHeight = 1280, quality = 0.8) {
   return new Promise((resolve) => {
-    if (!blob) { resolve(null); return; }
     try {
       const img = new Image();
       const url = URL.createObjectURL(blob);
@@ -1254,8 +1287,8 @@ function extractVideoFrameForShare(blob, maxWidth = 1280, maxHeight = 1280, qual
 }
 
 // Prepara arquivos de fotos e vídeos para compartilhamento nativo no WhatsApp.
-// Usa EXATAMENTE o mesmo preparo do "Compartilhar Somente Este Item" (que funciona):
-// cada foto é comprimida em JPEG (máx. 1280px) para o pacote caber no limite do Android.
+// Usa EXATAMENTE o mesmo preparo do "Compartilhar Somente Este Item" (que funciona perfeitamente):
+// Fotos abaixo de 1.2 MB são anexadas diretamente em 0 ms sem re-compressão; fotos pesadas são reduzidas rapidamente.
 async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
   const cleanPlate = (chk.plateHorse || 'CAMINHAO').replace(/[^A-Z0-9]/g, '');
 
@@ -1275,7 +1308,7 @@ async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
   const totalVideos = selectedMedias.filter(x => x.type === 'video').length;
   let videoCounter = 0;
 
-  // Processamento em paralelo (mais rápido que um por um)
+  // Processamento imediato idêntico ao shareIndividualItem
   const tasks = selectedMedias.map(async (m, i) => {
     const parentItem = (chk.items || []).find(it => it.id === m.itemId);
     const itemTag = parentItem ? parentItem.title.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 15) : `Item_${i + 1}`;
@@ -1284,11 +1317,15 @@ async function prepareOptimizedShareFiles(chk, medias, includedItemIds = null) {
       if (!rawBlob) return null;
 
       if (m.type === 'photo') {
-        const compressedBlob = await withTimeout(compressImageForShare(rawBlob), 8000, null);
+        const isLarge = (rawBlob.size || 0) > PHOTO_OPTIMIZE_THRESHOLD;
+        let blobToUse = rawBlob;
+        if (isLarge) {
+          blobToUse = await withTimeout(compressImageForShare(rawBlob), 800, rawBlob);
+        }
         const filename = `VISTORIA_${cleanPlate}_${itemTag}_Foto_${i + 1}.jpg`;
         return {
           kind: 'photo',
-          file: new File([compressedBlob || rawBlob], filename, { type: 'image/jpeg', lastModified: Date.now() })
+          file: new File([blobToUse || rawBlob], filename, { type: 'image/jpeg', lastModified: Date.now() })
         };
       }
 
@@ -1684,238 +1721,86 @@ function scheduleStoredMediaOptimization(checklistId) {
   }, 4000);
 }
 
-// Divide os arquivos em lotes de no máximo 10 arquivos / 46 MB (limite do Android)
-function planShareBatches(files) {
-  const batches = [];
-  const tooBig = [];
-  let cur = [];
-  let bytes = 0;
-  for (const f of files) {
-    const s = f.size || 0;
-    if (s > SHARE_MAX_BYTES) {
-      tooBig.push(f);
-      continue;
-    }
-    if (cur.length >= SHARE_MAX_FILES || (bytes + s > SHARE_MAX_BYTES && cur.length > 0)) {
-      batches.push(cur);
-      cur = [];
-      bytes = 0;
-    }
-    cur.push(f);
-    bytes += s;
-  }
-  if (cur.length > 0) batches.push(cur);
-  return { batches, tooBig };
-}
-
-// Barra flutuante com botão: usada quando o celular exige um novo toque para abrir o envio
-function showShareActionBar(message, buttonLabel, onTap) {
-  hideShareActionBar();
-  const bar = document.createElement('div');
-  bar.id = 'shareActionBar';
-  bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:16px;z-index:99999;background:#0f172a;border:1px solid rgba(34,197,94,0.55);border-radius:14px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,0.55);display:flex;flex-direction:column;gap:10px;';
-  bar.innerHTML = `
-    <div data-role="msg" style="color:#e2e8f0;font-size:0.85rem;line-height:1.4;"></div>
-    <div style="display:flex;gap:8px;">
-      <button type="button" data-role="go" style="flex:1;padding:13px;border:none;border-radius:10px;background:#16a34a;color:#fff;font-weight:800;font-size:0.95rem;cursor:pointer;"></button>
-      <button type="button" data-role="close" style="padding:13px 15px;border-radius:10px;background:transparent;border:1px solid rgba(255,255,255,0.2);color:#cbd5e1;cursor:pointer;">✕</button>
-    </div>`;
-  bar.querySelector('[data-role="msg"]').textContent = message;
-  const goBtn = bar.querySelector('[data-role="go"]');
-  goBtn.textContent = buttonLabel;
-  // Chamada síncrona dentro do clique: mantém o gesto do usuário para o navigator.share
-  goBtn.addEventListener('click', () => { onTap(); });
-  bar.querySelector('[data-role="close"]').addEventListener('click', hideShareActionBar);
-  document.body.appendChild(bar);
-}
-
-function hideShareActionBar() {
-  const old = document.getElementById('shareActionBar');
-  if (old) old.remove();
-}
-
-// Envia um lote de mídias com a legenda. Em caso de bloqueio, oferece botão para novo toque.
-async function runShareBatch(session, index) {
-  let files = session.batches[index];
-  session.attempts[index] = (session.attempts[index] || 0) + 1;
-
-  // Após 2 falhas no mesmo lote, tenta somente as fotos (aparelhos que não aceitam o vídeo)
-  if (session.attempts[index] > 2) {
-    const onlyImages = files.filter(f => (f.type || '').startsWith('image/'));
-    if (onlyImages.length > 0 && onlyImages.length < files.length) files = onlyImages;
-  }
-
-  const total = session.batches.length;
-  const text = index === 0
-    ? session.caption
-    : `📎 *Mídias complementares (${index + 1}/${total})* - Placa ${session.plate}`;
-
-  try {
-    await navigator.share({ title: session.title, text, files });
-  } catch (err) {
-    if (err && err.name === 'AbortError') {
-      hideShareActionBar();
-      return 'aborted';
-    }
-    console.warn('Compartilhamento de mídias bloqueado:', err);
-    const mb = (files.reduce((a, f) => a + (f.size || 0), 0) / 1048576).toFixed(1);
-    if (session.attempts[index] >= 4) {
-      hideShareActionBar();
-      showToast(`Não foi possível anexar as mídias (${err && err.name ? err.name : 'erro'}, ${files.length} arquivo(s), ${mb} MB).`, 'warning');
-      return 'failed';
-    }
-    showShareActionBar(
-      `Toque no botão para abrir o WhatsApp com ${files.length} foto(s)/vídeo(s) (${mb} MB) e o relatório da vistoria.`,
-      '📤 Enviar fotos e vídeos',
-      () => runShareBatch(session, index)
-    );
-    return 'pending';
-  }
-
-  closeSharePreviewModal();
-  const next = index + 1;
-  if (next < total) {
-    const remaining = session.batches.slice(next).reduce((a, b) => a + b.length, 0);
-    showShareActionBar(
-      `Parte ${index + 1} de ${total} enviada. O WhatsApp aceita até 10 arquivos / 50 MB por envio — faltam ${remaining} mídia(s).`,
-      `📤 Enviar próximas mídias (${next + 1}/${total})`,
-      () => runShareBatch(session, next)
-    );
-    return 'sent';
-  }
-
-  hideShareActionBar();
-  showToast('Vistoria e mídias compartilhadas com sucesso!', 'success');
-  if (session.tooBig.length > 0) {
-    showToast(`${session.tooBig.length} vídeo(s) acima de 50 MB ficaram de fora; estão sendo reduzidos automaticamente. Compartilhe novamente em instantes.`, 'warning');
-  }
-  return 'sent';
-}
-
-// O Android WebShare NÃO aceita fotos e vídeos misturados no mesmo array.
-// Agrupamos fotos em lotes de até 10 fotos (máx. 30MB) e vídeos individualmente (1 por lote com sua legenda).
-function buildShareBatches(photoFiles, videoFiles) {
-  const batches = [];
-
-  // Lotes de Fotos
-  if (photoFiles && photoFiles.length > 0) {
-    let cur = { type: 'photos', files: [], bytes: 0 };
-    photoFiles.forEach(f => {
-      const size = f.size || 0;
-      if (cur.files.length >= 10 || (cur.bytes + size > 30 * 1024 * 1024 && cur.files.length > 0)) {
-        batches.push(cur);
-        cur = { type: 'photos', files: [], bytes: 0 };
-      }
-      cur.files.push(f);
-      cur.bytes += size;
-    });
-    if (cur.files.length > 0) batches.push(cur);
-  }
-
-  // Lotes de Vídeos (1 por lote para legenda dedicada no WhatsApp)
-  if (videoFiles && videoFiles.length > 0) {
-    videoFiles.forEach((vf, idx) => {
-      batches.push({
-        type: 'video',
-        files: [vf],
-        bytes: vf.size || 0,
-        videoIndex: idx + 1,
-        totalVideos: videoFiles.length,
-        shareCaption: vf.shareCaption
-      });
-    });
-  }
-
-  return batches;
-}
-
-function batchCaption(batch, idx, total, chk) {
-  if (batch.shareCaption) return batch.shareCaption;
-  const caps = batch.files.filter(f => f.shareCaption).map(f => f.shareCaption);
-  let t = `📎 *Mídias da vistoria (${idx}/${total})* - Placa ${((chk && chk.plateHorse) || '---').toUpperCase()}`;
-  if (caps.length > 0) t += `\n\n${caps.join('\n\n')}`;
-  return t;
-}
-
-function explainShareFailure(batch) {
-  const big = batch.files.find(f => (f.size || 0) > 40 * 1024 * 1024);
-  if (big) {
-    return `O arquivo "${big.name}" tem ${(big.size / 1048576).toFixed(0)} MB e passa do limite do WhatsApp.`;
-  }
-  return 'O aparelho não pôde processar o compartilhamento deste arquivo.';
-}
-
+// ==========================================
+// COMPARTILHAMENTO NATIVO DIRETO COM MÍDIAS E RELATÓRIO
+// ==========================================
 async function shareMediaWithReport({ title, text, photoFiles = [], videoFiles = [], chk }) {
-  // 1. PACOTE ÚNICO: Junta fotos e vídeos diretamente no mesmo array para envio imediato
-  const allFiles = [...(photoFiles || []), ...(videoFiles || [])];
   const shareTitle = title || 'Checklist Truck Pro';
 
-  // 2. Legenda formatada especificamente para o WhatsApp (abaixo de 950 chars para nunca sumir)
+  // 1. Legenda para o WhatsApp (mantida sob 950 caracteres para não ser descartada no WhatsApp Android)
   let shareText = text || '';
-  if (allFiles.length > 0) {
-    if (chk && (shareText.length > 950 || !shareText)) {
+  if ((photoFiles.length > 0 || videoFiles.length > 0) && chk) {
+    if (shareText.length > 950 || !shareText) {
       shareText = formatWhatsAppPhotoCaption(chk);
-    } else if (shareText.length > 950) {
-      shareText = shareText.substring(0, 910) + '...\n📄 Relatório completo copiado na área de transferência.';
     }
   }
 
-  // 3. ENVIO NATIVO COMPLETO: fotos e vídeos acima e legenda abaixo
+  // 2. Determina a lista de arquivos a anexar (máximo 10 arquivos por compartilhamento nativo)
+  const allFiles = [...photoFiles, ...videoFiles];
+  let filesToShare = [];
+
   if (allFiles.length > 0) {
-    let filesToShare = allFiles;
-    let supportsFiles = false;
+    // Candidato 1: todos os arquivos juntos (até 10 arquivos)
+    const candidateAll = allFiles.slice(0, 10);
+    let canShareCandidate = false;
     try {
-      supportsFiles = !!(navigator.canShare && navigator.canShare({ files: allFiles }));
+      canShareCandidate = !!(navigator.canShare && navigator.canShare({ files: candidateAll }));
     } catch (e) {
-      supportsFiles = false;
+      canShareCandidate = false;
     }
 
-    // Alguns aparelhos não aceitam o formato do vídeo: segue somente com as fotos
-    if (!supportsFiles && photoFiles.length > 0) {
+    if (canShareCandidate) {
+      filesToShare = candidateAll;
+    } else if (photoFiles.length > 0) {
+      // Candidato 2: fotos (até 10 arquivos) caso o aparelho não aceite tipos heterogêneos de mídia
+      const candidatePhotos = photoFiles.slice(0, 10);
       try {
-        if (navigator.canShare && navigator.canShare({ files: photoFiles })) {
-          supportsFiles = true;
-          filesToShare = photoFiles;
-          showToast('Este aparelho não aceita o formato do vídeo; enviando as fotos com o relatório.', 'warning');
+        if (navigator.canShare && navigator.canShare({ files: candidatePhotos })) {
+          filesToShare = candidatePhotos;
+        }
+      } catch (e) {}
+    } else if (videoFiles.length > 0) {
+      // Candidato 3: vídeos
+      const candidateVideos = videoFiles.slice(0, 1);
+      try {
+        if (navigator.canShare && navigator.canShare({ files: candidateVideos })) {
+          filesToShare = candidateVideos;
         }
       } catch (e) {}
     }
-
-    if (!supportsFiles) {
-      showToast('Este navegador não permite anexar fotos/vídeos. Abra o app pelo Google Chrome no celular.', 'warning');
-      return 'failed';
-    }
-
-    // Respeita o limite do Android (10 arquivos / 50 MB por envio) — uma única chamada ao share,
-    // pois cada chamada consome o gesto do toque.
-    const { batches, tooBig } = planShareBatches(filesToShare);
-    if (batches.length === 0) {
-      showToast(`O(s) vídeo(s) passam de 50 MB e estão sendo reduzidos automaticamente. Tente novamente em instantes.`, 'warning');
-      return 'pending';
-    }
-
-    const session = {
-      title: shareTitle,
-      caption: shareText,
-      plate: ((chk && chk.plateHorse) || '---').toUpperCase(),
-      batches,
-      tooBig,
-      attempts: {}
-    };
-    return await runShareBatch(session, 0);
   }
 
-  // 4. Compartilha apenas texto SOMENTE se não houver nenhuma mídia anexada
-  if (allFiles.length === 0) {
-    if (navigator.canShare && navigator.canShare({ title: shareTitle, text: shareText })) {
-      try {
-        await navigator.share({ title: shareTitle, text: shareText });
-        closeSharePreviewModal();
-        showToast('Relatório compartilhado com sucesso!', 'success');
-        return 'sent';
-      } catch (err) {
-        if (err.name === 'AbortError') return 'aborted';
+  // 3. Compartilhamento NATIVO DIRETO (idêntico ao Compartilhar Somente Este Item)
+  if (filesToShare.length > 0) {
+    try {
+      await navigator.share({
+        title: shareTitle,
+        text: shareText,
+        files: filesToShare
+      });
+      closeSharePreviewModal();
+      showToast('Vistoria e fotos/vídeos compartilhados com sucesso!', 'success');
+      return 'sent';
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        return 'aborted';
       }
+      console.warn('Falha ao compartilhar arquivos nativamente, tentando apenas texto:', err);
+    }
+  }
+
+  // 4. Se não havia mídias anexadas ou o navegador falhou com arquivos: envia texto via navigator.share
+  if (navigator.canShare && navigator.canShare({ title: shareTitle, text: shareText })) {
+    try {
+      await navigator.share({
+        title: shareTitle,
+        text: shareText
+      });
+      closeSharePreviewModal();
+      showToast('Relatório compartilhado com sucesso!', 'success');
+      return 'sent';
+    } catch (err) {
+      if (err && err.name === 'AbortError') return 'aborted';
     }
   }
 

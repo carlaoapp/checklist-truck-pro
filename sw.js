@@ -1,4 +1,4 @@
-const CACHE_NAME = 'truck-checklist-v1.10.8';
+const CACHE_NAME = 'truck-checklist-v1.10.9';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
